@@ -1,0 +1,12 @@
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+.build/
+
+# macOS
+.DS_Store
+
+# Never commit real WHOOP OAuth credentials.
+*.env
+Secrets.plist
