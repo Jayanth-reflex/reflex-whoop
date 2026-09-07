@@ -21,6 +21,16 @@ enum Migrator {
             try createControlLayer(db)
         }
 
+        // Never edit v1 above — this is the pattern going forward: add a new
+        // migration, never touch a shipped one. `user_calibrating` is needed so
+        // BaselineEngine can exclude calibrating days from baseline math (per the
+        // design doc) without re-joining back to `recoveries` for every window.
+        migrator.registerMigration("v2_daily_metrics_calibrating") { db in
+            try db.alter(table: "daily_metrics") { t in
+                t.add(column: "user_calibrating", .boolean).notNull().defaults(to: false)
+            }
+        }
+
         return migrator
     }
 

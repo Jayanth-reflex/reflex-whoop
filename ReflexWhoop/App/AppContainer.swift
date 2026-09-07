@@ -49,4 +49,29 @@ final class AppContainer {
         let client = WhoopClient(auth: auth)
         return ApiSyncEngine(client: client, dbPool: database.dbPool)
     }
+
+    private static let lastForegroundSyncKey = "lastForegroundSyncAttempt"
+    private static let foregroundSyncDebounce: TimeInterval = 15 * 60
+
+    /// The third sync trigger from the design doc's "app foreground (debounced
+    /// 15 min)" — call from the root view whenever the app becomes active.
+    /// Debounce state lives in `UserDefaults` (not memory) so it survives the
+    /// app being killed and relaunched, which on a free Apple ID's 7-day-expiry
+    /// build happens often.
+    ///
+    /// Checks `auth.isSignedIn()` directly rather than the `isSignedIn`
+    /// published property: this can run from `RootView`'s own `.task` on the
+    /// very first launch, before `refreshSignInState()` (a separate `.task`,
+    /// unordered relative to this one) has had a chance to set that property —
+    /// reading the cached flag here would silently skip the first sync on a
+    /// fresh launch until the next foreground event.
+    func syncIfDueOnForeground() async {
+        guard (try? await auth.isSignedIn()) == true else { return }
+        let lastAttempt = UserDefaults.standard.object(forKey: Self.lastForegroundSyncKey) as? Date
+        if let lastAttempt, Date().timeIntervalSince(lastAttempt) < Self.foregroundSyncDebounce { return }
+
+        UserDefaults.standard.set(Date(), forKey: Self.lastForegroundSyncKey)
+        guard let engine = await syncEngine() else { return }
+        _ = try? await engine.syncNow(trigger: "foreground")
+    }
 }

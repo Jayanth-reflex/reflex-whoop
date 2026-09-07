@@ -99,6 +99,11 @@ common_settings = {
   'TARGETED_DEVICE_FAMILY' => '1', # iPhone only
   'CODE_SIGN_STYLE' => 'Automatic',
   'ENABLE_PREVIEWS' => 'YES',
+  # Free Apple ID (Personal Team, per the design doc's constraints section):
+  # no push/iCloud/App Groups, and every on-device build expires after 7 days
+  # and needs re-installing (re-run devicectl install or hit Run in Xcode —
+  # this team ID itself doesn't change).
+  'DEVELOPMENT_TEAM' => 'YOUR_TEAM_ID',
 }
 
 project.build_configurations.each do |config|

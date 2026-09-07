@@ -58,6 +58,12 @@ struct ApiSyncEngine {
             let normalizeStats = try ApiNormalizer.processPending(dbPool)
             summary.recordsUpserted = normalizeStats.upserted
 
+            // Runs synchronously as part of the same sync: a sync that lands new
+            // data but leaves daily_metrics/baselines/correlations stale would
+            // show Today/Trends/Insights lagging one sync behind reality for no
+            // reason a user could see or explain.
+            try AnalysisEngine.run(dbPool)
+
             try await finishSyncLog(logID, requestsMade: summary.requestsMade, recordsUpserted: summary.recordsUpserted, error: nil)
         } catch {
             summary.error = error.localizedDescription
