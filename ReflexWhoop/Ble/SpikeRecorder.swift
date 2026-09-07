@@ -39,16 +39,20 @@ final class SpikeRecorder {
 
     var connectionState: BandConnection.ConnectionState { connection.state }
 
-    func startSession(mode: String = "spike_hello_plus_hr") throws {
+    func startSession(mode: String = "spike_hr_imu_optical") throws {
         let id = UUID().uuidString
         let now = Date()
+        // Channels this session *intends* to enable via beginSafeCommandSequence
+        // — not a claim about what was actually decoded (docs/PROTOCOL-GEN5.md
+        // has confirmed only "hr" so far).
+        let channelsJSON = #"["hr","imu","optical"]"#
         try dbPool.write { db in
             try db.execute(
                 sql: """
                 INSERT INTO ble_sessions (id, started_at, mode, channels_json, sample_count, dropped_count, byte_count)
-                VALUES (?, ?, ?, '[]', 0, 0, 0)
+                VALUES (?, ?, ?, ?, 0, 0, 0)
                 """,
-                arguments: [id, Int64(now.timeIntervalSince1970), mode]
+                arguments: [id, Int64(now.timeIntervalSince1970), mode, channelsJSON]
             )
         }
         sessionID = id
@@ -84,9 +88,10 @@ final class SpikeRecorder {
 
     /// Sends the safe, read-only-plus-live-stream sequence from docs/design.md's
     /// "What we stream": identity/battery first (to validate the envelope
-    /// round-trips before trusting anything else), then the realtime toggles.
-    /// Called once from the UI when `connectionState == .ready`; harmless to
-    /// call again, it's idempotent.
+    /// round-trips before trusting anything else), then the realtime toggles —
+    /// HR, IMU, and optical (R21, the only source of true respiratory rate),
+    /// all opcodes from the allowlist's live-only set. Called once from the UI
+    /// when `connectionState == .ready`; harmless to call again, it's idempotent.
     func beginSafeCommandSequence() {
         guard !sentSafeSequence else { return }
         sentSafeSequence = true
@@ -94,6 +99,9 @@ final class SpikeRecorder {
         try? connection.send(opcode: .getBatteryLevel)
         try? connection.send(opcode: .toggleRealtimeHR, body: Data([0x01]))
         try? connection.send(opcode: .sendR10R11Realtime, body: Data([0x01]))
+        try? connection.send(opcode: .toggleImuMode, body: Data([0x01]))
+        try? connection.send(opcode: .enableOpticalData, body: Data([0x01]))
+        try? connection.send(opcode: .toggleOpticalMode, body: Data([0x01]))
     }
 
     private func handleRawFrame(characteristic: CBUUID, data: Data, receivedAt: Date) {
