@@ -13,8 +13,6 @@ struct RootView: View {
                 .tabItem { Label("Live", systemImage: "waveform.path.ecg") }
             DataView()
                 .tabItem { Label("Data", systemImage: "cylinder.split.1x2") }
-            SettingsView()
-                .tabItem { Label("Settings", systemImage: "gearshape") }
         }
         .tint(.green)
     }

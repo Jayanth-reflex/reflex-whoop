@@ -10,3 +10,6 @@ DerivedData/
 # Never commit real WHOOP OAuth credentials.
 *.env
 Secrets.plist
+
+# Local-only WHOOP OAuth credentials for dev testing — never commit.
+.secrets.local.json
