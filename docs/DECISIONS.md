@@ -66,3 +66,83 @@ rather than being hand-maintained.
 A record a few hours either side of local midnight can land on the "wrong" day
 relative to WHOOP's own app. Acceptable for v1 trend/correlation work; would need
 revisiting if exact day-boundary precision matters (e.g. sleep-debt accounting).
+
+## `offline` scope isn't a Developer Dashboard checkbox
+
+The WHOOP Developer Dashboard's app-creation form lists six scopes to tick
+(`read:profile read:body_measurement read:cycles read:recovery read:sleep
+read:workout`) with no `offline` toggle anywhere in the UI. `OAuthConfig.scopes`
+requests it anyway, appended in the authorize URL's `scope` parameter — confirmed
+against the real API that this works and a refresh token comes back, so `offline`
+is a protocol-level modifier requested at auth time, not a per-app registration.
+
+## Token exchange uses `client_secret_post`, not HTTP Basic auth
+
+`WhoopAuth`'s token requests put `client_id`/`client_secret` in the URL-encoded
+request body alongside `grant_type`, rather than an `Authorization: Basic` header.
+WHOOP's docs don't specify which OAuth2 client-authentication method their token
+endpoint expects; body params worked against the real API on the first live test
+(see README's "Verification"). If a future WHOOP API change starts rejecting this,
+switching to Basic auth in `WhoopAuth.postTokenRequest` is the fix to try first.
+
+## Settings lives behind a toolbar icon, not a 6th tab
+
+`RootView`'s `TabView` originally had six tabs (Today/Trends/Insights/Live/Data/
+Settings). iOS collapses anything past 5 into an auto-generated "More" list — worse
+UX on its own, and this specific case also turned out to be unreliable to drive via
+simulator UI automation (tapping a row in the system-generated "More" list
+intermittently failed to navigate, while every other tap in the app worked fine).
+Moved Settings to a gear icon in Today's toolbar, opened as a sheet — a standard
+iOS pattern for a low-frequency screen, and it fixed both problems at once.
+
+## Free Apple ID: hardcoded `DEVELOPMENT_TEAM`, and Xcode's own session can expire
+
+`scripts/generate_project.rb` sets `DEVELOPMENT_TEAM` to a specific Personal Team ID
+rather than leaving it for Xcode to resolve interactively — needed for `xcodebuild`
+to sign a device build non-interactively at all. Building under a different Apple ID
+means changing that one line. Separately: Xcode's *own* stored login for an Apple ID
+can silently expire ("Unable to log in with account ... The login details were
+rejected") and needs a manual Xcode → Settings → Accounts → remove-and-re-add to
+fix — this is unrelated to the WHOOP OAuth flow and can't be scripted, since it needs
+the Apple ID password/2FA interactively.
+
+## `stats.upserted` counts inbox pages, not individual records
+
+`ApiNormalizer.processPending`'s `Stats.upserted` increments once per inbox row
+(page) that produced at least one change, not once per normalized record inside
+that page. A `sync_log` entry showing e.g. "14 requests, 13 upserted" after a
+backfill that actually wrote 243 rows across cycles/recoveries/sleeps/workouts is
+correct, not a bug — the per-table row counts are what to check for record-level
+accuracy, `sync_log.records_upserted` is a coarser "did this batch do anything"
+signal.
+
+## `AppContainer.syncIfDueOnForeground()` checks `auth.isSignedIn()` directly
+
+Not the cached `isSignedIn` published property. `RootView`'s own `.task` (which
+calls `syncIfDueOnForeground`) and the outer `.task { await container.
+refreshSignInState() }` attached in `ReflexWhoopApp` are two independent `.task`
+modifiers with no ordering guarantee between them — reading the cached property
+risked silently skipping the very first sync on a fresh launch if it happened to
+run before `refreshSignInState()` set the flag. Caught by inspection while wiring
+the foreground-sync trigger, before it shipped.
+
+## Baseline windows exclude the day they're scoring
+
+`BaselineEngine` computes a day's mean/stddev from the N days *strictly before* it,
+never including the day itself, then z-scores that day's actual value against that
+window. Including the target day would let an extreme value pull its own baseline
+toward itself, muting exactly the deviation a baseline exists to catch.
+
+## `ReadinessEngine`'s sleep-debt scoring uses a fixed 2-hour scale
+
+Rather than each night's personalized `sleep_need.baseline_milli` (which would need
+an extra join per day). A debt of 2+ hours zeroes out that component; less scales
+linearly. Documented as a heuristic in the code, not presented as precise — revisit
+if it feels wrong in practice once more real data accumulates.
+
+## `CorrelationEngine` recomputes the entire history every run
+
+Rather than incrementally updating correlations for only what changed. A personal
+WHOOP history tops out at a few hundred days, so a full recompute is milliseconds —
+cheap enough that getting incremental-update invalidation subtly wrong isn't worth
+the risk it would introduce.
