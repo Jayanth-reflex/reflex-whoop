@@ -74,4 +74,14 @@ final class AppContainer {
         guard let engine = await syncEngine() else { return }
         _ = try? await engine.syncNow(trigger: "foreground")
     }
+
+    /// Phase 4. Deliberately not a stored property: constructing a
+    /// `SpikeRecorder` doesn't touch Bluetooth by itself (that only happens on
+    /// `startSession`), but keeping it request-scoped means `LiveView` controls
+    /// exactly when a `CBCentralManager` gets created, which is what triggers
+    /// the OS Bluetooth-permission prompt.
+    @MainActor
+    func makeSpikeRecorder() -> SpikeRecorder {
+        SpikeRecorder(dbPool: database.dbPool)
+    }
 }

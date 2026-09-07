@@ -40,16 +40,27 @@
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 
-	<!-- Background App Refresh for the API sync engine (Phase 2). No entitlement
-	     required — this is a plain Info.plist capability. -->
+	<!-- Background App Refresh for the API sync engine (Phase 2), plus
+	     bluetooth-central (Phase 4) so a connected band keeps delivering
+	     notifications while the app is backgrounded — an overnight session
+	     can still get suspended by iOS, but this is what makes it possible
+	     at all on a free Apple ID (no entitlement required, unlike Push). -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
+		<string>bluetooth-central</string>
 	</array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.reflexwhoop.sync.refresh</string>
 	</array>
+
+	<!-- CoreBluetooth (Phase 4) — direct connection to your own WHOOP band over
+	     its custom fd4b… service. Read-only: no write path to any band setting
+	     exists in this app. See docs/DECISIONS.md and the BLE safety rails in
+	     docs/design.md. -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>ReflexWhoop connects directly to your own WHOOP band to stream live heart rate and motion data alongside the WHOOP cloud data it already syncs.</string>
 
 	<key>UILaunchScreen</key>
 	<dict/>
