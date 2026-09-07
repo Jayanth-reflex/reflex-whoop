@@ -64,7 +64,10 @@ final class BandConnection: NSObject {
         sequenceCounter &+= 1
         var inner = Data([Ble.PacketType.command.rawValue, sequenceCounter, opcode.rawValue])
         inner.append(body)
-        let frame = Gen5Envelope.encode(field: 0, inner: inner)
+        // field = 1 is the only value confirmed on the wire so far (every one
+        // of 711 captured frames in the discovery spike carried it) — see
+        // docs/PROTOCOL-GEN5.md.
+        let frame = Gen5Envelope.encode(field: 1, inner: inner)
         // Gen 5 requires write-with-response — write-without-response is a
         // documented no-op (docs/design.md's Gen4/Gen5 diff table).
         peripheral.writeValue(frame, for: writeCharacteristic, type: .withResponse)

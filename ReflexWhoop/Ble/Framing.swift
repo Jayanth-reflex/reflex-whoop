@@ -1,10 +1,10 @@
 import Foundation
 
 /// CRC algorithms used by the Gen 5 envelope. These two functions are the only
-/// part of this file that's a *confirmed fact* rather than a hypothesis — they
-/// implement the standard CRC-16/MODBUS and CRC-32 (IEEE 802.3) algorithms and
-/// are verified against the textbook check values for ASCII "123456789" in
-/// `FramingTests`, independent of anything WHOOP-specific.
+/// part of this file that was already a confirmed fact before the discovery
+/// spike ran — they implement the standard CRC-16/MODBUS and CRC-32 (IEEE
+/// 802.3) algorithms and are verified against the textbook check values for
+/// ASCII "123456789" in `FramingTests`, independent of anything WHOOP-specific.
 enum Crc {
     /// CRC-16/MODBUS: init 0xFFFF, poly 0xA001 (reflected 0x8005), no xorout.
     /// Check value for "123456789" is 0x4B37.
@@ -41,59 +41,70 @@ enum Crc {
     }
 }
 
-/// The Gen 5 envelope, built from docs/design.md's diff table:
-/// `[0xAA][0x01][len][field][CRC-16/MODBUS][inner][CRC-32]`.
+/// The Gen 5 envelope. **Confirmed** against a real ~10-minute session on the
+/// user's own band — 711/711 captured frames across all three notify
+/// characteristics matched this exact structure with a valid CRC-16 *and* a
+/// valid CRC-32, zero exceptions. See `docs/PROTOCOL-GEN5.md` for the full
+/// derivation (found by brute-force searching which byte range's CRC-32
+/// matched the trailing 4 bytes across 14 near-identical real frames).
 ///
-/// **This layout is a hypothesis, not a confirmed fact** — the field widths
-/// below (`len` as u16 LE, `field` as one reserved byte, CRC-16 computed over
-/// `len`+`field`, inner padded to a multiple of 4 before the CRC-32 trailer)
-/// are this app's best reading of the design doc's diff table, chosen by
-/// mirroring Gen 4's known-good structure (`[0xAA][u16 len][CRC8(len)][inner
-/// padded /4][u32 CRC32]`) with Gen 5's documented widening of the length
-/// checksum from CRC-8 to CRC-16 and one new header byte. The Gen 5 discovery
-/// spike (docs/design.md, "Gen 5 discovery spike") exists specifically to
-/// confirm or correct this — see `docs/PROTOCOL-GEN5.md` once written.
+/// ```
+/// byte 0      0xAA                  marker
+/// byte 1      0x01                  version (constant in every sample seen)
+/// bytes 2-3   u16 LE  len            = field(2) + crc16(2) + inner.count
+/// bytes 4-5   u16 LE  field          constant 0x0001 in every sample seen —
+///                                    purpose unconfirmed, meaning unknown
+/// bytes 6-7   u16 LE  crc16          CRC-16/MODBUS over bytes[0..<6]
+/// bytes 8..   inner   (len - 4)      [packet_type][seq][opcode/event_id][body]
+/// last 4      u32 LE  crc32          CRC-32 (IEEE 802.3) over `inner` only
+/// ```
+///
+/// This superseded an earlier hypothesis (7-byte header, 1-byte field, inner
+/// padded to a multiple of 4) modeled on Gen 4's structure — that guess turned
+/// out to be wrong on every count except the marker and version bytes. There
+/// is **no padding** here: `len` and the total frame length are exact byte
+/// counts.
 ///
 /// Nothing downstream trusts this decoder blindly: `FrameReassembler` verifies
 /// both CRCs before treating a candidate frame as real, and every raw fragment
 /// is logged to `ingest_inbox` regardless of whether reassembly or CRC
-/// verification succeeds — a wrong hypothesis loses no data, only defers
-/// decoding until the hypothesis is fixed.
+/// verification succeeds.
 enum Gen5Envelope {
     static let marker: UInt8 = 0xAA
     static let version: UInt8 = 0x01
-    static let headerSize = 7 // marker + version + len(2) + field(1) + crc16(2)
+    static let headerSize = 8 // marker + version + len(2) + field(2) + crc16(2)
     static let trailerSize = 4 // crc32
 
     struct Frame {
-        let field: UInt8
-        let inner: Data // padded to a multiple of 4, per the Gen 4 precedent
+        let field: UInt16
+        let inner: Data // exact length, no padding
         let headerCrcValid: Bool
         let trailerCrcValid: Bool
     }
 
-    /// Builds an outgoing command envelope around `inner` (the unpadded inner
-    /// packet: `[packet_type][seq][opcode][body…]`). Padding and both CRCs are
-    /// computed here so callers never hand-assemble bytes.
-    static func encode(field: UInt8, inner: Data) -> Data {
-        let paddedLen = (inner.count + 3) / 4 * 4
-        var padded = inner
-        padded.append(Data(repeating: 0, count: paddedLen - inner.count))
-
-        let len = UInt16(inner.count)
-        let lenBytes: [UInt8] = [UInt8(len & 0xFF), UInt8(len >> 8)]
-        let crc16 = Crc.modbus16(lenBytes + [field])
-
+    /// Builds an outgoing command envelope around `inner` (the exact inner
+    /// packet: `[packet_type][seq][opcode][body…]`, no padding). `field` is
+    /// always `1` for every outgoing/incoming frame observed so far — see the
+    /// doc comment above — but is a parameter rather than hardcoded so a
+    /// future session that discovers a different meaning doesn't need this
+    /// signature to change.
+    static func encode(field: UInt16, inner: Data) -> Data {
+        let len = UInt16(inner.count + 4)
         var frame = Data()
         frame.append(marker)
         frame.append(version)
-        frame.append(contentsOf: lenBytes)
-        frame.append(field)
+        frame.append(UInt8(len & 0xFF))
+        frame.append(UInt8(len >> 8))
+        frame.append(UInt8(field & 0xFF))
+        frame.append(UInt8(field >> 8))
+
+        let crc16 = Crc.modbus16(frame) // over bytes[0..<6], i.e. the frame so far
         frame.append(UInt8(crc16 & 0xFF))
         frame.append(UInt8(crc16 >> 8))
-        frame.append(padded)
 
-        let crc32 = Crc.ieee32(padded)
+        frame.append(inner)
+
+        let crc32 = Crc.ieee32(inner)
         frame.append(UInt8(crc32 & 0xFF))
         frame.append(UInt8((crc32 >> 8) & 0xFF))
         frame.append(UInt8((crc32 >> 16) & 0xFF))
@@ -101,35 +112,36 @@ enum Gen5Envelope {
         return frame
     }
 
-    /// Total byte length this hypothesis predicts for a frame whose header
-    /// claims inner length `len` — used by `FrameReassembler` to know how many
-    /// bytes to wait for. Returns `nil` if `len` is implausibly large (garbage
-    /// header), so the reassembler can resync instead of buffering forever.
-    static func predictedFrameLength(innerLen: Int) -> Int? {
-        guard innerLen >= 0, innerLen <= 8192 else { return nil }
-        let paddedLen = (innerLen + 3) / 4 * 4
-        return headerSize + paddedLen + trailerSize
+    /// Total byte length this predicts for a frame whose header claims field
+    /// `len`, used by `FrameReassembler` to know how many bytes to wait for.
+    /// Returns `nil` if `len` is too small to be real (must at least cover
+    /// `field`+`crc16`) or implausibly large (garbage header), so the
+    /// reassembler can resync instead of buffering forever.
+    static func predictedFrameLength(len: Int) -> Int? {
+        guard len >= 4, len <= 8192 else { return nil }
+        let innerLen = len - 4
+        return headerSize + innerLen + trailerSize
     }
 
     /// Decodes a byte range already known to be one complete candidate frame
-    /// (i.e. `bytes.count == predictedFrameLength(innerLen:)` for the `len`
-    /// read from this same header). Verifies both CRCs; never throws — a bad
-    /// frame comes back with the relevant `*CrcValid` flag false so the caller
-    /// can log-and-discard rather than crash on a wrong hypothesis.
+    /// (i.e. `bytes.count == predictedFrameLength(len:)` for the `len` read
+    /// from this same header). Verifies both CRCs; never throws — a bad frame
+    /// comes back with the relevant `*CrcValid` flag false so the caller can
+    /// log-and-discard rather than crash on a wrong reading.
     static func decode(_ bytes: Data) -> Frame? {
         guard bytes.count >= headerSize + trailerSize, bytes[bytes.startIndex] == marker else { return nil }
         let b = [UInt8](bytes)
         let len = Int(b[2]) | (Int(b[3]) << 8)
-        let field = b[4]
-        let headerCrc = UInt16(b[5]) | (UInt16(b[6]) << 8)
-        let headerCrcValid = Crc.modbus16([b[2], b[3], field]) == headerCrc
+        let field = UInt16(b[4]) | (UInt16(b[5]) << 8)
+        let headerCrc = UInt16(b[6]) | (UInt16(b[7]) << 8)
+        let headerCrcValid = Crc.modbus16(b[0..<6]) == headerCrc
 
-        let paddedLen = (len + 3) / 4 * 4
-        guard headerSize + paddedLen + trailerSize == bytes.count else { return nil }
+        guard len >= 4 else { return nil }
+        let innerLen = len - 4
+        guard headerSize + innerLen + trailerSize == bytes.count else { return nil }
 
-        let innerRange = headerSize..<(headerSize + paddedLen)
-        let inner = Data(b[innerRange])
-        let trailerStart = headerSize + paddedLen
+        let inner = Data(b[headerSize..<(headerSize + innerLen)])
+        let trailerStart = headerSize + innerLen
         let trailerCrc = UInt32(b[trailerStart])
             | (UInt32(b[trailerStart + 1]) << 8)
             | (UInt32(b[trailerStart + 2]) << 16)
@@ -143,16 +155,21 @@ enum Gen5Envelope {
 /// Buffers fragmented BLE notifications into complete envelope candidates,
 /// length-based rather than triggered on the next `0xAA` byte — per
 /// docs/design.md: "sensor payloads contain 0xAA bytes constantly. This is the
-/// single most common way a decoder silently corrupts data." If the header's
-/// claimed length turns out to be wrong (Gen5Envelope's hypothesis is off, or
-/// we're mid-stream from before we started listening), this resyncs by
-/// scanning for the next plausible marker rather than getting stuck.
+/// single most common way a decoder silently corrupts data." If a header's
+/// claimed length is implausible (garbage, or we tuned in mid-stream), this
+/// resyncs by scanning for the next plausible marker rather than getting stuck.
 ///
 /// This never drops data from the inbox's point of view — the caller logs
 /// every raw fragment to `ingest_inbox` on arrival, before handing it to this
 /// reassembler. This class only decides when a *candidate complete frame* is
-/// ready to attempt-decode for live diagnostics (e.g. the HELLO round-trip
-/// check); it is not the source of truth for what was received.
+/// ready to attempt-decode for live diagnostics; it is not the source of
+/// truth for what was received.
+///
+/// Unexercised so far: the real session this was verified against (see
+/// docs/PROTOCOL-GEN5.md) never fragmented — every notification was already a
+/// complete frame, largest inner payload 112 bytes. Keep this for R21/r22,
+/// which are expected to exceed one notification's MTU, but its resync
+/// behavior against a *real* fragmented frame is still unconfirmed.
 final class FrameReassembler {
     private var buffer = Data()
 
@@ -175,7 +192,7 @@ final class FrameReassembler {
 
             let b = [UInt8](buffer.prefix(Gen5Envelope.headerSize))
             let len = Int(b[2]) | (Int(b[3]) << 8)
-            guard let total = Gen5Envelope.predictedFrameLength(innerLen: len) else {
+            guard let total = Gen5Envelope.predictedFrameLength(len: len) else {
                 // Implausible length — this 0xAA was a false positive inside
                 // sensor data. Drop it and keep scanning from the next byte.
                 buffer.removeFirst()
