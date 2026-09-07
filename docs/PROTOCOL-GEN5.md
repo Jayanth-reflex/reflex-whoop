@@ -304,6 +304,71 @@ Findings:
   way yet — worth another attempt now that the write-ordering bug is fixed
   and won't confound the result.
 
+### Session 4 (2026-09-07): the "opcode echo" theory was likely wrong, and a real goldmine of firmware strings
+
+Pulled again right after the write-completion fix, expecting HELLO/battery to
+finally get answered. They still didn't — but digging into *why* turned up
+something bigger than that one bug.
+
+**The debug-log characteristic isn't limited to `0x32`.** Widening the
+ASCII-string search past just `0x32` frames turned up plain-text firmware log
+lines riding inside `0x24`-typed frames too, on **both** `fd4b0003` and
+`fd4b0005`. That means session 3's "opcode echo" read — `inner[2]` on a
+`0x24` frame equals the opcode we just sent — was likely a coincidence for
+some frames and a real echo for others, with no reliable way from the outside
+to tell which is which. **Downgrading that finding: it is no longer safe to
+assume the 5 toggle commands' apparent "acks" in sessions 3-4 were actually
+responses to *this app's* requests**, as opposed to debug-log noise or
+another client's (the official app's) traffic landing at a coincidentally
+matching byte offset.
+
+**Real, human-readable firmware strings recovered** (same decode technique as
+`0x32` in session 1, just applied more broadly):
+
+```
+BLE_CMD: Command Set Realtime HR
+BLE_CMD: Command Get Data Range
+BLE_CMD: Send persistent config key, index 1: enable_r22_packets
+BLE_CMD: Send persistent config key, index 2: enable_r22_v2_packets
+BLE_CMD: Send persistent config key, index 3: enable_r22_v3_packets
+... (through v9)
+BLE_CMD: Send persistent config key, index 10: disable_pip_r26_packets
+BLE_CMD: Send persistent config key, index 14: hr_ch_switching
+BLE_CMD: Send persistent config key, index 15: ir_hw_switching
+BLE_CMD: Send persistent config key, index 16: enable_passive_s[leep?]
+BLE_CMD: Send persistent config key, index 17: enable_sig11_during_sleep
+BLE_CMD: Send persistent config key, index 19: enable_sig12
+BLE_CMD: Send persistent config key, index 20: enable_frizzle_burst_mode
+BLE_CMD: Send persistent config key, index 21: ir_1x_enable
+BLE_CMD: Send persistent config key, index 22: enable_rock[?]
+BLE_CMD: Attempt to set enable_r22_v2_packets to 2
+SENSORS: No active sources. Backlog: 0.0
+BLE_CMD: Invalid packet, error = 2   (recurs in every session, not just session 1)
+```
+
+This is real value even without knowing who triggered it: **r22 has (at
+least) 9 firmware-internal protocol versions** (`v2`-`v9`, plus an
+unversioned `enable_r22_packets`), which explains why it's undocumented and
+hard to pin down — whoever's asking may be negotiating which version the
+connected client understands. `disable_pip_r26_packets` is a config key this
+document hadn't seen named anywhere — a channel/record type ("r26"?) not in
+`docs/design.md`'s R10/R21/r22 list at all. `trap_fit_gen5` and
+`wear_detect_...` also appeared elsewhere in the same log stream.
+
+**The likely reason no r22 data has shown up in any session yet**: `SENSORS:
+No active sources. Backlog: 0.0` appears immediately after r22-enable
+attempts, every time. Whatever is asking for r22 (this app, the official
+app, or firmware's own negotiation — see above, now unclear which), the band
+itself is reporting that no sensor source is actually active. This reads
+like a real precondition not being met (skin contact / wrist-on / warm-up
+time) rather than a framing or opcode problem.
+
+**Recommended next step, not yet done**: force-quit the official WHOOP app
+(not just background it) before the next spike session. That's the one
+change that would cleanly separate "this app's traffic" from "everything
+else on this shared-looking channel" and resolve the attribution question
+above, rather than guessing from more mixed logs.
+
 ### Safety — checked again given the larger volume
 
 This session moved far more data than session 1 (~92 minutes, three
