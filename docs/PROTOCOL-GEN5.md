@@ -283,3 +283,6 @@ full duration rather than a few seconds in. **Recommend one more quick
 official-app/scores glance** — not out of new alarm (the `0x2F`-is-shared-format
 finding above is reassuring, not concerning), just to keep the same standard
 applied every time real band activity is this extensive.
+
+**Checked 2026-09-07 (session 2): official app synced normally, scores
+looked normal.**
