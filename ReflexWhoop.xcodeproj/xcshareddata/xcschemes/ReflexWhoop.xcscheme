@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "F7B9140A56B3A9973B5343F3"
+               BlueprintIdentifier = "2CC0CF91BA54319E3C68C24F"
                BuildableName = "ReflexWhoop.app"
                BlueprintName = "ReflexWhoop"
                ReferencedContainer = "container:ReflexWhoop.xcodeproj">
@@ -30,7 +30,7 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "F7B9140A56B3A9973B5343F3"
+            BlueprintIdentifier = "2CC0CF91BA54319E3C68C24F"
             BuildableName = "ReflexWhoop.app"
             BlueprintName = "ReflexWhoop"
             ReferencedContainer = "container:ReflexWhoop.xcodeproj">
@@ -41,7 +41,7 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "B65A1063AB1017EAB4B8F45B"
+               BlueprintIdentifier = "8C07202ED281F5047242EEBA"
                BuildableName = "ReflexWhoopTests.xctest"
                BlueprintName = "ReflexWhoopTests"
                ReferencedContainer = "container:ReflexWhoop.xcodeproj">
@@ -63,7 +63,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "F7B9140A56B3A9973B5343F3"
+            BlueprintIdentifier = "2CC0CF91BA54319E3C68C24F"
             BuildableName = "ReflexWhoop.app"
             BlueprintName = "ReflexWhoop"
             ReferencedContainer = "container:ReflexWhoop.xcodeproj">
@@ -80,7 +80,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "F7B9140A56B3A9973B5343F3"
+            BlueprintIdentifier = "2CC0CF91BA54319E3C68C24F"
             BuildableName = "ReflexWhoop.app"
             BlueprintName = "ReflexWhoop"
             ReferencedContainer = "container:ReflexWhoop.xcodeproj">

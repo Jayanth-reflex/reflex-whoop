@@ -167,3 +167,119 @@ Cleared to run another spike session with the now-fixed envelope.
 3. Confirm whether a second `0x2F` burst happens on every reconnect
    (supports "automatic on connect") or only sometimes (supports "coincided
    with the official app's own sync").
+
+---
+
+## Session 2 (2026-09-07, three back-to-back connections, ~92 minutes total)
+
+7,343 raw frames across three separate sessions/reconnects (the app was
+restarted between them), captured with the now-fixed envelope. Every one of
+the 7,343 frames parsed with a valid marker, exact length, valid CRC-16, and
+valid CRC-32 — the envelope fix from session 1 holds completely.
+
+**This app's commands parsed this time.** All 156 `fd4b0003` responses this
+session are `0x24` (real responses), zero `"Invalid packet"` errors — the
+envelope fix worked, and `toggleRealtimeHR`/`sendR10R11Realtime` actually took
+effect.
+
+### Correction to session 1: `0x2F` is not historical-drain-specific
+
+Session 1 labeled `0x2F` "a historical-data burst" because it was adjacent to
+the `0x32` debug log describing one. This session's evidence narrows that:
+
+- `0x2F` frames from the very start of session 1 (debug-log-confirmed as part
+  of the historical dump) and `0x2F` frames from deep into session 3 (after
+  `sendR10R11Realtime` had been sent, parsed, and presumably taken effect) are
+  **byte-for-byte the same 112-byte structure** — same field layout, same
+  varying/constant byte positions. There is one record format, not two.
+- `0x2F` traffic didn't stop when the debug log said `"Historical Dump
+  Complete"` — it continued at a much lower, steady rate (roughly 1-3/s
+  rather than the initial ~160/s) for the following ~40 minutes, across
+  multiple reconnects, well past the point where the "dump" had supposedly
+  finished.
+
+Reading: **`0x2F` is a general-purpose sensor/data record wrapper used both
+for the initial small connect-time catch-up sync *and* for the live realtime
+stream once enabled** — not a record type exclusive to draining historical
+flash. The connect-time burst itself (598 records, 77 KB, ~4 seconds, per
+session 1's debug log) still reads as a small bounded catch-up, not an
+unbounded dump; it's just delivered using the same record format as
+everything else, which is a reasonable, unremarkable firmware design choice
+in hindsight, not evidence of anything unusual.
+
+It recurred on all three reconnects this session (new value: it happens
+**every** connection, not just occasionally) — consistent with "automatic
+per-connection catch-up sync," inconsistent with "coincidence with the
+official app." That question is now close to resolved in favor of
+band-automatic behavior, though still not certain.
+
+### `0x28` — realtime compact HR — CONFIRMED, high confidence
+
+409 frames, exactly 20 bytes of inner payload each, arriving at almost
+exactly 1 Hz during the live-stream portion of session 3 (once
+`sendR10R11Realtime`/`toggleRealtimeHR` had actually parsed). Byte-position
+analysis across all 409:
+
+```
+inner[0]      0x28              packet_type (constant)
+inner[1]      0x02              constant — subtype? unconfirmed
+inner[2]      varies, +1/frame  low byte of a monotonic counter (device
+                                 uptime or similar; does NOT match unix
+                                 received_at, so not a wall-clock timestamp)
+inner[3]      0xe2-0xe4         high byte of that same counter
+inner[4:6]    0x9e 0x6a         constant — unclear, possibly part of the
+                                 same counter or a session id
+inner[6:8]    0x28/0x70/0xb8,   unclear — three-valued, changes in sync
+              0x7c/0x7d/0x7e    with the counter rolling over a boundary
+inner[8]      76-94 (0x4c-0x5e) HEART RATE, bpm, direct u8, no scaling —
+                                 stayed in a normal light-activity range for
+                                 the whole capture. Physiologically the only
+                                 field in this record that fits.
+inner[9:20]   various           unmapped — likely signal-quality/motion/
+                                 skin-contact fields per docs/design.md's
+                                 general expectations for a compact-HR record,
+                                 not individually confirmed
+```
+
+This matches `docs/design.md`'s prediction exactly ("Compact HR also arrives
+on `0x28`") and is now implemented as `RealtimeHRDecoder` (`ReflexWhoop/Ble/`)
+— decoding only `inner[8]`, the one field with real evidence behind it. No
+other byte in this record is decoded; per the design doc, "only decode a
+field once the spike confirms it."
+
+**Not yet cross-checked against the official app's own live HR number** —
+the design doc's real correctness bar for this field. Do that next: open the
+official app's live HR view during a session and compare.
+
+### `fd4b0007` — identified, not decoded
+
+4 frames total across all three sessions (very low frequency — once per
+connection, roughly). These do **not** match the `Gen5Envelope` structure at
+all (no valid `0xAA` marker framing) — this characteristic carries a
+different wire format. The bytes are recognizable as **CBOR**: length-prefixed
+text strings decode directly to readable content, including what look like a
+build/version string (`"50.41.1.0"`), a hardware or codename string
+(`"WG50_r45"`), and an internal codename (`"maverick"`), alongside a long
+random-looking ID string. Read as one-time device/firmware metadata sent on
+connect, not sensor data. Not a priority to fully parse — noted here so a
+future pass doesn't have to rediscover that it isn't envelope-framed.
+
+### Updated confidence summary (supersedes session 1's table for `0x2F`)
+
+| Claim | Confidence |
+|---|---|
+| `0x2F` = general sensor-record wrapper (catch-up sync **and** live stream, same format) | High — same byte structure confirmed in both contexts |
+| `0x28` = realtime compact HR, `inner[8]` = bpm | High — physiologically plausible, stable, matches design doc's prediction; not yet cross-checked against the official app's own HR reading |
+| Connect-time catch-up sync is automatic per-connection (not coincidental official-app traffic) | Raised to likely — recurred on 3/3 reconnects this session |
+| `fd4b0007` = CBOR-encoded device metadata, sent once per connection | Confirmed it's CBOR and readable; full field mapping not attempted |
+| R21/r22 layouts | Still not captured — this session confirms `0x28` (compact HR) but no evidence yet of the richer optical/IMU records |
+
+### Safety — checked again given the larger volume
+
+This session moved far more data than session 1 (~92 minutes, three
+reconnects, several hundred KB total, vs. session 1's single 8-second
+capture window) purely because it ran much longer and was pulled after the
+full duration rather than a few seconds in. **Recommend one more quick
+official-app/scores glance** — not out of new alarm (the `0x2F`-is-shared-format
+finding above is reassuring, not concerning), just to keep the same standard
+applied every time real band activity is this extensive.

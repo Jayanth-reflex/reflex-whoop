@@ -23,6 +23,16 @@ struct LiveView: View {
 
                 if let recorder {
                     statusSection(recorder)
+                    if let bpm = recorder.lastHeartRateBpm {
+                        Section("Heart rate") {
+                            LabeledContent("Latest reading") {
+                                Text("\(bpm) bpm").font(.title2.monospacedDigit())
+                            }
+                            Text("Unscaled byte from the 0x28 realtime record — see docs/PROTOCOL-GEN5.md. Not yet cross-checked against the official app's own reading.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                     countersSection(recorder)
                     if let inner = recorder.lastHelloInner {
                         Section("HELLO response (envelope confirmed)") {

@@ -23,6 +23,9 @@ final class SpikeRecorder {
     private(set) var reassembledFrameCount = 0
     private(set) var validCrcFrameCount = 0
     private(set) var lastHelloInner: Data?
+    /// Per `RealtimeHRDecoder` / docs/PROTOCOL-GEN5.md — the one sensor field
+    /// confirmed so far. `nil` until a `0x28` record has actually arrived.
+    private(set) var lastHeartRateBpm: UInt8?
 
     private var reassembler = FrameReassembler()
     private var sentSafeSequence = false
@@ -112,6 +115,9 @@ final class SpikeRecorder {
             validCrcFrameCount += 1
             if lastHelloInner == nil {
                 lastHelloInner = frame.inner
+            }
+            if let bpm = RealtimeHRDecoder.heartRateBpm(inner: frame.inner) {
+                lastHeartRateBpm = bpm
             }
         }
     }
