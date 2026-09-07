@@ -13,7 +13,9 @@ Personal use, single member. Not submitted to the App Store.
 ## Status
 
 **Phases 1-3 complete and verified live against a real WHOOP account and a real
-iPhone** (not just the simulator — see "Verification" below). 55/55 tests passing.
+iPhone** (not just the simulator — see "Verification" below). Phase 4 (BLE) is
+underway with one confirmed sensor decode; Phase 5 (export + MCP) is built and
+working. 89/89 tests passing.
 
 - **Phase 1 (foundation):** storage schema, `ChunkCodec`/`ChunkStore` for BLE time
   series, the ingest inbox, and the API-model normalizer.
@@ -29,9 +31,25 @@ iPhone** (not just the simulator — see "Verification" below). 55/55 tests pass
   next-day recovery with Benjamini-Hochberg correction across the whole predictor
   batch. Today/Trends/Insights are real screens now, not placeholders.
 
-**Not yet built:** direct-to-band BLE (Phase 4, starting with a Gen 5 protocol
-discovery spike — WHOOP 5.0's BLE protocol is not publicly documented), export +
-MCP server (Phase 5).
+- **Phase 4 (BLE, in progress):** direct CoreBluetooth connection to the band
+  over its custom `fd4b…` service. The Gen 5 envelope is fully reverse-engineered
+  and confirmed against two real worn sessions (see
+  [`docs/PROTOCOL-GEN5.md`](docs/PROTOCOL-GEN5.md)) — 8-byte header, CRC-16 +
+  CRC-32 framing, no padding. `OpcodeAllowlist` is the single choke point every
+  outgoing command passes through: it structurally cannot send a
+  flash-cursor-moving opcode, enforced by tests, not just convention. One
+  sensor field is confirmed and decoded (realtime heart rate, `0x28` records);
+  IMU and optical (R21/r22 — the higher-value, undocumented channels) are
+  enabled in the spike but not yet mapped.
+- **Phase 5 (export + MCP):** `Exporter` writes CSVs, a `VACUUM INTO` SQLite
+  snapshot, raw API/BLE payload dumps, and a manifest to `Documents/exports/`,
+  wired to a Data-tab button with a share sheet. `mcp-server/` (Python) opens
+  that snapshot read-only and gives Claude on your Mac `schema`/`query`/
+  `daily_summary`/`trend`/`correlations`/`workouts`/`hrv_session` tools — see
+  [`mcp-server/README.md`](mcp-server/README.md) for setup.
+
+**Not yet built:** R21/r22 sensor decoding, the Live screen's HRV suite and
+cross-source validation, the Parquet conversion step beyond the CLI script.
 
 ### Verification
 
@@ -95,16 +113,18 @@ ReflexWhoop/
   App/          composition root + SwiftUI app entry point
   Auth/         OAuth2 against the WHOOP API — token store, Keychain, refresh
   Api/          WHOOP v2 API models + rate-limited client
-  Ble/          direct-to-band Bluetooth (Phase 4, not yet built)
+  Ble/          direct-to-band Bluetooth — envelope, opcode allowlist, decoders
+                (Phase 4, in progress: HR confirmed, R21/r22 not yet mapped)
   Ingest/       append-only inbox + normalizer — both data sources land here first
   Store/        SQLite (GRDB): migrations, DAOs, BLE time-series chunk codec/store
   Sync/         backfill / incremental / pending-score-refetch sync engine
   Analysis/     daily_metrics builder, baselines, readiness, anomalies, correlations
-  Export/       CSV/SQLite/JSONL export (Phase 5, not yet built)
-  UI/           SwiftUI screens — Today/Trends/Insights are real; Live/Data are
-                Phase 1/4 placeholders and working row-count views respectively
-ReflexWhoopTests/  unit tests + WHOOP API fixture JSON (55 tests)
-mcp-server/        Python MCP server for Claude to query your data (Phase 5)
+  Export/       CSV/SQLite snapshot/JSONL/manifest export (Phase 5, done)
+  UI/           SwiftUI screens — Today/Trends/Insights/Live/Data are all real;
+                Live shows the BLE spike, Data has the Export button
+ReflexWhoopTests/  unit tests + WHOOP API fixture JSON (89 tests)
+mcp-server/        Python MCP server for Claude to query your data — done, see
+                   mcp-server/README.md
 docs/              design doc, decisions log
 scripts/           project generator (see Building, above)
 ```
