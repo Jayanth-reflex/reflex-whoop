@@ -151,6 +151,9 @@ session (rejected at the CRC layer), but the transfer itself was real and
 this is the check the design doc calls for whenever that's true — do it
 before running another live session, not just as routine.
 
+**Checked 2026-09-07: official app synced normally, scores looked normal.**
+Cleared to run another spike session with the now-fixed envelope.
+
 ## Next steps once the app/scores check out
 
 1. Re-run the spike now that `Framing.swift` sends correctly-formed commands
