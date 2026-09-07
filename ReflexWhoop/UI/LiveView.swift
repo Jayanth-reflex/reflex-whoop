@@ -34,6 +34,18 @@ struct LiveView: View {
                         }
                     }
                     countersSection(recorder)
+                    if !recorder.commandResults.isEmpty {
+                        Section("Startup commands") {
+                            ForEach(recorder.commandResults, id: \.opcode) { result in
+                                HStack {
+                                    Text(result.opcode)
+                                    Spacer()
+                                    Image(systemName: result.succeeded ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                        .foregroundStyle(result.succeeded ? .green : .red)
+                                }
+                            }
+                        }
+                    }
                     if let inner = recorder.lastHelloInner {
                         Section("HELLO response (envelope confirmed)") {
                             Text(inner.map { String(format: "%02X", $0) }.joined(separator: " "))
@@ -93,7 +105,7 @@ struct LiveView: View {
             // setup is a handful of round trips, not a hot loop.
             for _ in 0..<200 {
                 if newRecorder.connectionState == .ready {
-                    newRecorder.beginSafeCommandSequence()
+                    await newRecorder.beginSafeCommandSequence()
                     return
                 }
                 try? await Task.sleep(for: .milliseconds(250))

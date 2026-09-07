@@ -274,6 +274,36 @@ future pass doesn't have to rediscover that it isn't envelope-framed.
 | `fd4b0007` = CBOR-encoded device metadata, sent once per connection | Confirmed it's CBOR and readable; full field mapping not attempted |
 | R21/r22 layouts | Still not captured — this session confirms `0x28` (compact HR) but no evidence yet of the richer optical/IMU records |
 
+### Session 3 (2026-09-07): IMU/optical enabled, but a real write bug ate two commands
+
+136 frames, 130 seconds, first live session with `toggleImuMode`/
+`enableOpticalData`/`toggleOpticalMode` added to the command sequence.
+Findings:
+
+- **All 5 of the streaming-toggle commands were accepted** — `fd4b0003`
+  responses echo back `inner[1]` = our own outgoing sequence number and
+  `inner[2]` = the opcode the band processed, so `0x03`/`0x3f`/`0x6a`/`0x6b`/
+  `0x6c` all confirmed round-tripping cleanly (this echo behavior is itself a
+  new, useful, confirmed fact about the `0x24` response format).
+- **`getHelloHarvard` and `getBatteryLevel` got no response at all** — the
+  echoed sequence numbers on the 5 responses that *did* arrive start at `1`,
+  meaning the band never even registered receiving the first two commands as
+  attempts. Root cause: `BandConnection.send` fired all seven
+  `peripheral.writeValue(type: .withResponse)` calls back-to-back with no
+  wait between them, and nothing checked `didWriteValueFor` at all — the
+  first two writes were silently dropped by CoreBluetooth rather than queued.
+  **Fixed**: `send` is now `async`, waits for the real write-completion
+  callback (or a 3-second timeout) before returning, and
+  `beginSafeCommandSequence` awaits each command in turn instead of firing
+  all seven at once. `LiveView` now shows a per-command success/failure list
+  so this class of failure is visible next time instead of silent.
+- **No new packet type appeared** despite the toggle commands succeeding —
+  still only `0x28` (compact HR) and `0x24` (responses) in 130 seconds. Most
+  likely explanation: 130 seconds isn't enough dwell time, and/or optical
+  needs snugger skin contact than this session had. Not conclusive either
+  way yet — worth another attempt now that the write-ordering bug is fixed
+  and won't confound the result.
+
 ### Safety — checked again given the larger volume
 
 This session moved far more data than session 1 (~92 minutes, three

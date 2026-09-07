@@ -92,16 +92,35 @@ final class SpikeRecorder {
     /// HR, IMU, and optical (R21, the only source of true respiratory rate),
     /// all opcodes from the allowlist's live-only set. Called once from the UI
     /// when `connectionState == .ready`; harmless to call again, it's idempotent.
-    func beginSafeCommandSequence() {
+    ///
+    /// Sequential and awaited, not fire-and-forget: sending all seven commands
+    /// back-to-back with no wait lost the first two (HELLO, battery) in a real
+    /// session — see `BandConnection.send`'s doc comment and
+    /// docs/PROTOCOL-GEN5.md's "session 3". `commandResults` records which
+    /// commands actually completed, for the UI to show.
+    private(set) var commandResults: [(opcode: String, succeeded: Bool)] = []
+
+    func beginSafeCommandSequence() async {
         guard !sentSafeSequence else { return }
         sentSafeSequence = true
-        try? connection.send(opcode: .getHelloHarvard)
-        try? connection.send(opcode: .getBatteryLevel)
-        try? connection.send(opcode: .toggleRealtimeHR, body: Data([0x01]))
-        try? connection.send(opcode: .sendR10R11Realtime, body: Data([0x01]))
-        try? connection.send(opcode: .toggleImuMode, body: Data([0x01]))
-        try? connection.send(opcode: .enableOpticalData, body: Data([0x01]))
-        try? connection.send(opcode: .toggleOpticalMode, body: Data([0x01]))
+        commandResults = []
+        let sequence: [(String, Ble.AllowedOpcode, Data)] = [
+            ("getHelloHarvard", .getHelloHarvard, Data()),
+            ("getBatteryLevel", .getBatteryLevel, Data()),
+            ("toggleRealtimeHR", .toggleRealtimeHR, Data([0x01])),
+            ("sendR10R11Realtime", .sendR10R11Realtime, Data([0x01])),
+            ("toggleImuMode", .toggleImuMode, Data([0x01])),
+            ("enableOpticalData", .enableOpticalData, Data([0x01])),
+            ("toggleOpticalMode", .toggleOpticalMode, Data([0x01])),
+        ]
+        for (name, opcode, body) in sequence {
+            do {
+                try await connection.send(opcode: opcode, body: body)
+                commandResults.append((name, true))
+            } catch {
+                commandResults.append((name, false))
+            }
+        }
     }
 
     private func handleRawFrame(characteristic: CBUUID, data: Data, receivedAt: Date) {

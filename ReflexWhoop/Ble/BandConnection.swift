@@ -39,6 +39,7 @@ final class BandConnection: NSObject {
     private var peripheral: CBPeripheral?
     private var writeCharacteristic: CBCharacteristic?
     private var sequenceCounter: UInt8 = 0
+    private var pendingWrite: CheckedContinuation<Void, Error>?
 
     func start() {
         guard central == nil else { return }
@@ -52,15 +53,27 @@ final class BandConnection: NSObject {
         state = .idle
     }
 
-    /// Builds and sends one command frame. `OpcodeAllowlist.assertAllowed` is
-    /// called first and unconditionally — this is the only place in the
-    /// codebase that writes to `writeCharacteristicUUID`, so this one check
-    /// guards every outgoing command the app can ever send.
-    func send(opcode: Ble.AllowedOpcode, body: Data = Data()) throws {
+    /// Builds and sends one command frame, and waits for the peripheral's
+    /// write-completion callback before returning. `OpcodeAllowlist.
+    /// assertAllowed` is called first and unconditionally — this is the only
+    /// place in the codebase that writes to `writeCharacteristicUUID`, so this
+    /// one check guards every outgoing command the app can ever send.
+    ///
+    /// Serialized on purpose: firing several `writeValue(type: .withResponse)`
+    /// calls back-to-back with no wait between them lost two real commands in
+    /// a live session (see docs/PROTOCOL-GEN5.md, "session 3") — CoreBluetooth
+    /// silently dropped the earliest writes rather than queuing them. Waiting
+    /// for each write's own completion (or a 3-second timeout, so one dead
+    /// write can't wedge every command after it) avoids that.
+    func send(opcode: Ble.AllowedOpcode, body: Data = Data()) async throws {
         try OpcodeAllowlist.assertAllowed(opcode.rawValue)
         guard let peripheral, let writeCharacteristic else {
             throw BandConnectionError.notReady
         }
+        guard pendingWrite == nil else {
+            throw BandConnectionError.writeInProgress
+        }
+
         sequenceCounter &+= 1
         var inner = Data([Ble.PacketType.command.rawValue, sequenceCounter, opcode.rawValue])
         inner.append(body)
@@ -68,13 +81,30 @@ final class BandConnection: NSObject {
         // of 711 captured frames in the discovery spike carried it) — see
         // docs/PROTOCOL-GEN5.md.
         let frame = Gen5Envelope.encode(field: 1, inner: inner)
-        // Gen 5 requires write-with-response — write-without-response is a
-        // documented no-op (docs/design.md's Gen4/Gen5 diff table).
-        peripheral.writeValue(frame, for: writeCharacteristic, type: .withResponse)
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            pendingWrite = continuation
+            // Gen 5 requires write-with-response — write-without-response is a
+            // documented no-op (docs/design.md's Gen4/Gen5 diff table).
+            peripheral.writeValue(frame, for: writeCharacteristic, type: .withResponse)
+
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(3))
+                // Only one write is ever in flight (guarded above), so if
+                // `pendingWrite` is still set after the timeout it must still
+                // be this one.
+                if let pending = pendingWrite {
+                    pendingWrite = nil
+                    pending.resume(throwing: BandConnectionError.writeTimedOut)
+                }
+            }
+        }
     }
 
     enum BandConnectionError: Error {
         case notReady
+        case writeInProgress
+        case writeTimedOut
     }
 
     private func beginConnecting() {
@@ -176,6 +206,18 @@ extension BandConnection: CBPeripheralDelegate {
             // fine for the spike (real correctness is CRC-checked per frame,
             // not connection-state-checked).
             state = .ready
+        }
+    }
+
+    nonisolated func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+        Task { @MainActor in
+            let continuation = pendingWrite
+            pendingWrite = nil
+            if let error {
+                continuation?.resume(throwing: error)
+            } else {
+                continuation?.resume(returning: ())
+            }
         }
     }
 
