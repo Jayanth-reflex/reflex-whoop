@@ -104,9 +104,16 @@ final class SpikeRecorder {
         guard !sentSafeSequence else { return }
         sentSafeSequence = true
         commandResults = []
+        // getHelloHarvard/getBatteryLevel have never once gotten a response in
+        // 6 sessions and 1327 command-response frames (docs/PROTOCOL-GEN5.md,
+        // "session 5") — every one of the 5 opcodes below that DOES get
+        // answered every time is sent with a 1-byte body; these two were the
+        // only ones sent with an empty body. Testing the hypothesis that an
+        // empty-body command is silently dropped by sending a harmless 0x00
+        // byte instead of Data().
         let sequence: [(String, Ble.AllowedOpcode, Data)] = [
-            ("getHelloHarvard", .getHelloHarvard, Data()),
-            ("getBatteryLevel", .getBatteryLevel, Data()),
+            ("getHelloHarvard", .getHelloHarvard, Data([0x00])),
+            ("getBatteryLevel", .getBatteryLevel, Data([0x00])),
             ("toggleRealtimeHR", .toggleRealtimeHR, Data([0x01])),
             ("sendR10R11Realtime", .sendR10R11Realtime, Data([0x01])),
             ("toggleImuMode", .toggleImuMode, Data([0x01])),

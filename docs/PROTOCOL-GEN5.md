@@ -381,3 +381,51 @@ applied every time real band activity is this extensive.
 
 **Checked 2026-09-07 (session 2): official app synced normally, scores
 looked normal.**
+
+### Session 5 (2026-09-12): a clean, isolated session resolves the attribution question
+
+Five sessions accumulated between 2026-09-07 and 2026-09-12. Two of them
+(started `1788843213`, `1789044211`) ran very long unattended — 105 and 172
+minutes — and are dominated by `0x2F`/`0x30`/`0x31`/`0x32` traffic (7,000-
+10,700 `0x2F` frames each, plus hundreds of `0x32` debug-log lines): heavy,
+mixed, exactly like every prior session. The most recent one (started
+`1789205307`, ~6.5 minutes) is different: **397 frames total, and every
+single one is either `0x28` (HR) or `0x24` (our own command responses) — zero
+`0x2F`, zero `0x30`, zero `0x31`, zero `0x32`.**
+
+That's the cleanest signal yet, and it answers session 4's open question:
+whatever generates the historical-burst/debug-log traffic did not happen at
+all in a session with no other apparent activity, while it happened in every
+other session captured so far. That's consistent with the official app (or
+something tied to its own activity) being the source of that traffic, not
+an automatic per-connection behavior of the band itself — raising confidence
+on the "official app's concurrent traffic" side of session 1's original open
+question, though this is one data point, not a controlled A/B test with the
+official app deliberately force-quit.
+
+**HR decode holds up over a longer clean run**: 392 samples at a steady 1 Hz,
+65-95 bpm the entire time — same field (`inner[8]`), same physiologically
+plausible range, now confirmed across three separate sessions on different
+days.
+
+**HELLO/battery still got zero responses — now confirmed across all 6
+sessions ever captured.** A full-database check: 1,327 total command-response
+frames logged since session 1, and not one of them echoes opcode `0x23`
+(`getHelloHarvard`) or `0x1A` (`getBatteryLevel`) — while the 5 opcodes sent
+with a 1-byte body (`toggleRealtimeHR`, `sendR10R11Realtime`,
+`toggleImuMode`, `enableOpticalData`, `toggleOpticalMode`) have a 100% answer
+rate every single time. **New leading hypothesis: an empty-body command gets
+silently dropped.** `getHelloHarvard`/`getBatteryLevel` were the only two
+sent with `Data()` (empty); every other opcode always carried at least one
+byte. Changed `SpikeRecorder.beginSafeCommandSequence` to send a harmless
+`0x00` byte with both instead of an empty body — untested until the next
+session confirms or refutes it.
+
+**Also newly confirmed**: the band's response sequence-number field does
+*not* reset per-connection — it climbed to the 80s-90s range in this
+session despite being a fresh `BandConnection` instance with its own
+`sequenceCounter` starting at 0. That number is the *band's* own counter
+(likely persistent since its last power cycle, incrementing once per command
+it processes from any source), not an echo purely scoped to this app's own
+requests — worth keeping in mind before reading too much into any future
+"sequence number" observation.
