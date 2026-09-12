@@ -26,6 +26,21 @@ final class SpikeRecorder {
     /// Per `RealtimeHRDecoder` / docs/PROTOCOL-GEN5.md — the one sensor field
     /// confirmed so far. `nil` until a `0x28` record has actually arrived.
     private(set) var lastHeartRateBpm: UInt8?
+    /// Frame count per inner packet_type, across every CRC-valid frame this
+    /// session — the "is this channel producing anything at all" diagnostic
+    /// for IMU/R10/R21/r22, none of which have a confirmed decoder yet.
+    private(set) var packetTypeCounts = PacketTypeCounts()
+    /// Raw strings pulled from `fd4b0007`'s CBOR payload — see
+    /// `DeviceMetadataDecoder`. Deduplicated in arrival order.
+    private(set) var deviceMetadataStrings: [String] = []
+    /// `R10Decoder`'s speculative read of the latest `0x2B` frame, if one has
+    /// ever arrived — unconfirmed on Gen 5, see that type's doc comment.
+    private(set) var lastR10Candidate: R10Decoder.Sample?
+    /// `0x28` HR minus `R10Decoder`'s candidate HR, once both exist —
+    /// docs/design.md's "free cross-check" (R10 vs compact HR should agree
+    /// within ±1 bpm on a worn band), computed automatically the moment both
+    /// sides of it exist instead of waiting for a manual comparison.
+    private(set) var hrCrossCheckDiffBpm: Int?
 
     private var reassembler = FrameReassembler()
     private var sentSafeSequence = false
@@ -61,6 +76,10 @@ final class SpikeRecorder {
         reassembledFrameCount = 0
         validCrcFrameCount = 0
         lastHelloInner = nil
+        packetTypeCounts = PacketTypeCounts()
+        deviceMetadataStrings = []
+        lastR10Candidate = nil
+        hrCrossCheckDiffBpm = nil
         sentSafeSequence = false
         reassembler = FrameReassembler()
         connection.start()
@@ -143,15 +162,38 @@ final class SpikeRecorder {
             }
         }
 
+        // fd4b0007 is not Gen5Envelope-framed (docs/PROTOCOL-GEN5.md:
+        // "these do not match the Gen5Envelope structure at all") — decode it
+        // directly rather than handing it to the envelope reassembler, which
+        // would just fail to find a marker and drop it.
+        if characteristic == Ble.unknown0007CharacteristicUUID {
+            for string in DeviceMetadataDecoder.extractStrings(raw: data) where !deviceMetadataStrings.contains(string) {
+                deviceMetadataStrings.append(string)
+            }
+            return
+        }
+
         for frame in reassembler.feed(data) {
             reassembledFrameCount += 1
             guard frame.headerCrcValid, frame.trailerCrcValid else { continue }
             validCrcFrameCount += 1
+            if let packetType = frame.inner.first {
+                packetTypeCounts.record(packetType)
+            }
             if lastHelloInner == nil {
                 lastHelloInner = frame.inner
             }
             if let bpm = RealtimeHRDecoder.heartRateBpm(inner: frame.inner) {
                 lastHeartRateBpm = bpm
+                if let candidate = lastR10Candidate {
+                    hrCrossCheckDiffBpm = Int(bpm) - Int(candidate.candidateHrBpm)
+                }
+            }
+            if let candidate = R10Decoder.decode(inner: frame.inner) {
+                lastR10Candidate = candidate
+                if let bpm = lastHeartRateBpm {
+                    hrCrossCheckDiffBpm = Int(bpm) - Int(candidate.candidateHrBpm)
+                }
             }
         }
     }

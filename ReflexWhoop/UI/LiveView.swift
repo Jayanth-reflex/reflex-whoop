@@ -31,8 +31,23 @@ struct LiveView: View {
                             Text("Unscaled byte from the 0x28 realtime record — see docs/PROTOCOL-GEN5.md. Not yet cross-checked against the official app's own reading.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            if let diff = recorder.hrCrossCheckDiffBpm {
+                                LabeledContent("R10 cross-check", value: "\(diff >= 0 ? "+" : "")\(diff) bpm vs R10 candidate")
+                            }
                         }
                     }
+                    if let candidate = recorder.lastR10Candidate {
+                        r10Section(candidate)
+                    }
+                    if !recorder.deviceMetadataStrings.isEmpty {
+                        Section("Device metadata (fd4b0007)") {
+                            ForEach(recorder.deviceMetadataStrings, id: \.self) { Text($0).font(.system(.footnote, design: .monospaced)) }
+                            Text("One-time CBOR strings sent per connection — see docs/PROTOCOL-GEN5.md.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    channelActivitySection(recorder)
                     countersSection(recorder)
                     if !recorder.commandResults.isEmpty {
                         Section("Startup commands") {
@@ -64,6 +79,38 @@ struct LiveView: View {
                 }
             }
             .navigationTitle("Live")
+        }
+    }
+
+    private func r10Section(_ candidate: R10Decoder.Sample) -> some View {
+        Section {
+            Label("Unconfirmed — Gen 4 hypothesis, never validated on Gen 5. See docs/design.md.", systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.orange)
+            LabeledContent("Candidate HR") { Text("\(candidate.candidateHrBpm) bpm") }
+            LabeledContent("Accel magnitude") { Text(String(format: "%.2f g", candidate.accelMagnitudeG)) }
+            if !candidate.rrIntervalsMs.isEmpty {
+                LabeledContent("RR intervals", value: candidate.rrIntervalsMs.map { "\($0)ms" }.joined(separator: ", "))
+            }
+            LabeledContent("Plausible") { Text(candidate.isPlausible ? "Yes" : "No").foregroundStyle(candidate.isPlausible ? .green : .red) }
+        } header: {
+            Text("R10 candidate (0x2B)")
+        }
+    }
+
+    private func channelActivitySection(_ recorder: SpikeRecorder) -> some View {
+        let entries = recorder.packetTypeCounts.sortedByCount
+        return Group {
+            if !entries.isEmpty {
+                Section("Channel activity") {
+                    ForEach(entries, id: \.packetType) { entry in
+                        LabeledContent(PacketTypeCounts.label(for: entry.packetType), value: "\(entry.count)")
+                    }
+                    Text("Frame counts by inner packet_type — shows whether IMU/R10/optical channels are producing anything, independent of whether we can decode them yet.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
