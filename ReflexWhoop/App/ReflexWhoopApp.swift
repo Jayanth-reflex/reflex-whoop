@@ -14,6 +14,10 @@ struct ReflexWhoopApp: App {
             // Must register before the app finishes launching, or a background
             // launch specifically to run this task silently no-ops.
             BackgroundSync.register(container: container)
+            // Same reason, for Bluetooth: a background relaunch to deliver a
+            // BLE event needs the central manager re-created during launch, or
+            // Core Bluetooth's restoration callback never fires.
+            MainActor.assumeIsolated { container.startContinuousCollectionIfEnabled() }
         } catch {
             fatalError("Failed to initialize app container: \(error)")
         }

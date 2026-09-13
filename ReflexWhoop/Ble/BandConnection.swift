@@ -35,18 +35,51 @@ final class BandConnection: NSObject {
     /// characteristics it arrived on.
     var onRawFrame: ((_ characteristic: CBUUID, _ data: Data, _ receivedAt: Date) -> Void)?
 
+    /// Fired every time the connection reaches `.ready` — including after a
+    /// reconnect or a state restoration, not just the first time. The band does
+    /// not remember that we asked it to stream across a disconnect, so whatever
+    /// enables streaming has to run again on each new connection.
+    var onReady: (() -> Void)?
+
     private var central: CBCentralManager?
     private var peripheral: CBPeripheral?
     private var writeCharacteristic: CBCharacteristic?
     private var sequenceCounter: UInt8 = 0
     private var pendingWrite: CheckedContinuation<Void, Error>?
 
-    func start() {
+    /// When true, a dropped connection is immediately re-requested rather than
+    /// left disconnected. `connect` with no timeout is the documented way to
+    /// say "reconnect whenever this peripheral is reachable again" — iOS holds
+    /// the request pending indefinitely, including while the app is suspended,
+    /// and wakes us when the band comes back. This is what makes collection
+    /// survive walking out of range, charging the band, or the app being
+    /// backgrounded for hours.
+    var autoReconnect = false
+
+    /// Opting into Core Bluetooth state restoration. With this set (plus the
+    /// `bluetooth-central` background mode), iOS can relaunch the app into the
+    /// background after it has been terminated and hand the still-connected
+    /// peripheral back via `willRestoreState`. Without it, termination ends
+    /// collection until the user next opens the app by hand.
+    ///
+    /// The identifier must be stable across launches — it is how iOS matches a
+    /// restored session to this manager.
+    private static let restoreIdentifier = "com.reflexwhoop.band.central"
+
+    /// `restoreState` must be false for a plain foreground spike (the Live
+    /// screen) — a restorable manager asks iOS to relaunch us for BLE events,
+    /// which is only wanted when continuous collection is actually enabled.
+    func start(restoreState: Bool = false) {
         guard central == nil else { return }
-        central = CBCentralManager(delegate: self, queue: nil)
+        let options: [String: Any] = restoreState
+            ? [CBCentralManagerOptionRestoreIdentifierKey: Self.restoreIdentifier]
+            : [:]
+        central = CBCentralManager(delegate: self, queue: nil, options: options)
     }
 
     func disconnect() {
+        // Explicit user intent: stop trying to come back.
+        autoReconnect = false
         if let peripheral, let central {
             central.cancelPeripheralConnection(peripheral)
         }
@@ -169,8 +202,43 @@ extension BandConnection: CBCentralManagerDelegate {
     nonisolated func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         Task { @MainActor in
             state = .disconnected(error?.localizedDescription ?? "disconnected")
-            self.peripheral = nil
             writeCharacteristic = nil
+            pendingWrite?.resume(throwing: BandConnectionError.notReady)
+            pendingWrite = nil
+
+            if autoReconnect {
+                // Keep the peripheral reference: this request stays pending
+                // until the band is reachable again, however long that takes.
+                central.connect(peripheral)
+                state = .connecting
+            } else {
+                self.peripheral = nil
+            }
+        }
+    }
+
+    /// Called when iOS relaunches the app to continue Bluetooth work it was
+    /// doing before termination. Re-adopting the peripheral here is what lets a
+    /// session resume without the user opening the app.
+    nonisolated func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
+        let restored = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral] ?? []
+        Task { @MainActor in
+            self.central = central
+            guard let peripheral = restored.first else { return }
+            self.peripheral = peripheral
+            peripheral.delegate = self
+            peripheralName = peripheral.name
+            autoReconnect = true
+
+            if peripheral.state == .connected {
+                // Still connected across the relaunch — re-discover so the
+                // characteristic references (which did not survive) are valid.
+                state = .discoveringServices
+                peripheral.discoverServices([Ble.serviceUUID])
+            } else {
+                state = .connecting
+                central.connect(peripheral)
+            }
         }
     }
 }
@@ -206,6 +274,7 @@ extension BandConnection: CBPeripheralDelegate {
             // fine for the spike (real correctness is CRC-checked per frame,
             // not connection-state-checked).
             state = .ready
+            onReady?()
         }
     }
 

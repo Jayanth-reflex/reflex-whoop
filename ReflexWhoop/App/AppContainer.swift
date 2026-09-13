@@ -124,6 +124,45 @@ final class AppContainer {
         return try await Task.detached { try BleNormalizer.replay(dbPool) }.value
     }
 
+    /// The app-lifetime recorder used by continuous collection. `nil` unless
+    /// `CollectionSettings.continuousCollectionEnabled` is on — the Live screen
+    /// creates its own short-lived recorder otherwise.
+    @MainActor private(set) var continuousRecorder: SpikeRecorder?
+
+    /// Starts standing band collection if it is enabled.
+    ///
+    /// Must be called during app launch, not from a view's `.task`: when iOS
+    /// relaunches the app in the background to deliver a Bluetooth event, the
+    /// `CBCentralManager` has to be re-created before launch completes or the
+    /// restoration callback never arrives and the relaunch is wasted.
+    ///
+    /// Independent of WHOOP sign-in by design. The band is a separate source,
+    /// and the entire point of this path is that it keeps working when the
+    /// cloud source does not (docs/ADR-001-data-sovereignty.md).
+    @MainActor
+    func startContinuousCollectionIfEnabled() {
+        guard CollectionSettings.continuousCollectionEnabled, continuousRecorder == nil else { return }
+        let recorder = makeSpikeRecorder()
+        continuousRecorder = recorder
+        try? recorder.startContinuousSession()
+    }
+
+    @MainActor
+    func stopContinuousCollection() {
+        continuousRecorder?.stopSession(reason: "continuous_disabled")
+        continuousRecorder = nil
+    }
+
+    @MainActor
+    func setContinuousCollection(_ enabled: Bool) {
+        CollectionSettings.continuousCollectionEnabled = enabled
+        if enabled {
+            startContinuousCollectionIfEnabled()
+        } else {
+            stopContinuousCollection()
+        }
+    }
+
     /// Phase 4. Deliberately not a stored property: constructing a
     /// `SpikeRecorder` doesn't touch Bluetooth by itself (that only happens on
     /// `startSession`), but keeping it request-scoped means `LiveView` controls

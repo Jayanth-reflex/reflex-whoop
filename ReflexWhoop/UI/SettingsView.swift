@@ -11,6 +11,7 @@ struct SettingsView: View {
     @State private var lastSyncSummary: String?
 
     @State private var sources: AppContainer.SourceSnapshot?
+    @State private var continuousCollection = CollectionSettings.continuousCollectionEnabled
 
     private func sourceRow(_ name: String, state: SourceState) -> some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -44,6 +45,20 @@ struct SettingsView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
+                }
+
+                Section {
+                    Toggle("Continuous collection", isOn: Binding(
+                        get: { continuousCollection },
+                        set: { newValue in
+                            continuousCollection = newValue
+                            container.setContinuousCollection(newValue)
+                        }
+                    ))
+                } header: {
+                    Text("Band")
+                } footer: {
+                    Text("Holds the band connection open and keeps recording in the background, reconnecting by itself after the band goes out of range. Works with no WHOOP account and no internet — the band is a separate source. Costs battery on both the phone and the band.")
                 }
 
                 Section("WHOOP Account") {

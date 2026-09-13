@@ -21,7 +21,12 @@ struct LiveView: View {
                     .foregroundStyle(.secondary)
                 }
 
-                if let recorder {
+                if let recorder = activeRecorder {
+                    if container.continuousRecorder != nil {
+                        Label("Continuous collection is on — this session runs in the background and resumes by itself after a disconnect.", systemImage: "infinity")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                     statusSection(recorder)
                     if let bpm = recorder.lastHeartRateBpm {
                         Section("Heart rate") {
@@ -71,7 +76,11 @@ struct LiveView: View {
                 }
 
                 Section {
-                    if recorder == nil {
+                    if container.continuousRecorder != nil {
+                        Text("Managed by continuous collection — turn it off in Settings to control sessions here.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else if recorder == nil {
                         Button("Start discovery spike") { start() }
                     } else {
                         Button("Stop session", role: .destructive) { stop() }
@@ -143,26 +152,24 @@ struct LiveView: View {
     }
 
     private func start() {
+        // The command sequence now fires from `BandConnection.onReady`, so it
+        // re-arms on every reconnect instead of only the first connection.
         let newRecorder = container.makeSpikeRecorder()
         recorder = newRecorder
         try? newRecorder.startSession()
-        Task {
-            // Poll for "ready" rather than wiring a callback — this view only
-            // needs to fire the safe command sequence once, and connection
-            // setup is a handful of round trips, not a hot loop.
-            for _ in 0..<200 {
-                if newRecorder.connectionState == .ready {
-                    await newRecorder.beginSafeCommandSequence()
-                    return
-                }
-                try? await Task.sleep(for: .milliseconds(250))
-            }
-        }
     }
 
     private func stop() {
         recorder?.stopSession()
         recorder = nil
+    }
+
+    /// Continuous collection owns a recorder for the app's lifetime; this
+    /// screen observes it rather than starting a competing session, since two
+    /// `CBCentralManager`s fighting over one peripheral is not a thing that
+    /// works.
+    private var activeRecorder: SpikeRecorder? {
+        container.continuousRecorder ?? recorder
     }
 }
 

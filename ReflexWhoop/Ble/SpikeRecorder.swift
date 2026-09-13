@@ -58,11 +58,29 @@ final class SpikeRecorder {
         connection.onRawFrame = { [weak self] uuid, data, receivedAt in
             self?.handleRawFrame(characteristic: uuid, data: data, receivedAt: receivedAt)
         }
+        // Re-enable streaming on every connection, not just the first: after a
+        // reconnect the band has forgotten it was asked to stream, so a
+        // long-running session that survived a disconnect would otherwise sit
+        // connected and silent.
+        connection.onReady = { [weak self] in
+            guard let self, sessionID != nil else { return }
+            sentSafeSequence = false
+            Task { await self.beginSafeCommandSequence() }
+        }
     }
 
     var connectionState: BandConnection.ConnectionState { connection.state }
 
-    func startSession(mode: String = "spike_hr_imu_optical") throws {
+    /// Continuous mode keeps the connection alive across disconnects and asks
+    /// iOS to relaunch the app for Bluetooth events — see `BandConnection`'s
+    /// `autoReconnect` and `start(restoreState:)`. Used when the band is being
+    /// treated as a standing data source rather than something you watch.
+    func startContinuousSession() throws {
+        connection.autoReconnect = true
+        try startSession(mode: "continuous", restoreState: true)
+    }
+
+    func startSession(mode: String = "spike_hr_imu_optical", restoreState: Bool = false) throws {
         let id = UUID().uuidString
         let now = Date()
         // Channels this session *intends* to enable via beginSafeCommandSequence
@@ -91,7 +109,7 @@ final class SpikeRecorder {
         lastWatermarkAt = nil
         sentSafeSequence = false
         reassembler = FrameReassembler()
-        connection.start()
+        connection.start(restoreState: restoreState)
     }
 
     func stopSession(reason: String = "user_stopped") {
