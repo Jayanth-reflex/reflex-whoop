@@ -237,7 +237,7 @@ struct LiveView: View {
     private func describe(_ state: BandConnection.ConnectionState) -> String {
         switch state {
         case .idle: "Not connected"
-        case .unavailable(let reason): reason
+        case .unavailable: "Bluetooth unavailable"
         case .scanning: "Looking for your band"
         case .connecting: "Connecting"
         case .discoveringServices, .subscribing: "Setting up"

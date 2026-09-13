@@ -15,9 +15,15 @@ import Observation
 @Observable
 @MainActor
 final class BandConnection: NSObject {
+    /// Why Core Bluetooth can't be used. A case rather than a message, so the
+    /// UI can offer the right fix for each.
+    enum Unavailability: Equatable {
+        case poweredOff, unauthorized, unsupported
+    }
+
     enum ConnectionState: Equatable {
         case idle
-        case unavailable(String) // powered off / unauthorized / unsupported
+        case unavailable(Unavailability)
         case scanning
         case connecting
         case discoveringServices
@@ -167,11 +173,11 @@ extension BandConnection: CBCentralManagerDelegate {
             case .poweredOn:
                 beginConnecting()
             case .poweredOff:
-                state = .unavailable("Bluetooth is off")
+                state = .unavailable(.poweredOff)
             case .unauthorized:
-                state = .unavailable("Bluetooth permission denied")
+                state = .unavailable(.unauthorized)
             case .unsupported:
-                state = .unavailable("Bluetooth not supported")
+                state = .unavailable(.unsupported)
             case .resetting, .unknown:
                 break
             @unknown default:

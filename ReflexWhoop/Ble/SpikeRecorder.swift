@@ -26,6 +26,8 @@ final class SpikeRecorder {
     /// Per `RealtimeHRDecoder` / docs/PROTOCOL-GEN5.md — the one sensor field
     /// confirmed so far. `nil` until a `0x28` record has actually arrived.
     private(set) var lastHeartRateBpm: UInt8?
+    /// The last 20 minutes of decoded heart rate, for the live chart.
+    private(set) var recentHeartRate = HeartRateWindow(span: 20 * 60)
     /// Frame count per inner packet_type, across every CRC-valid frame this
     /// session — the "is this channel producing anything at all" diagnostic
     /// for IMU/R10/R21/r22, none of which have a confirmed decoder yet.
@@ -102,6 +104,7 @@ final class SpikeRecorder {
         reassembledFrameCount = 0
         validCrcFrameCount = 0
         lastHelloInner = nil
+        recentHeartRate = HeartRateWindow(span: recentHeartRate.span)
         packetTypeCounts = PacketTypeCounts()
         deviceMetadataStrings = []
         lastR10Candidate = nil
@@ -241,6 +244,7 @@ final class SpikeRecorder {
             }
             if let bpm = RealtimeHRDecoder.heartRateBpm(inner: frame.inner) {
                 lastHeartRateBpm = bpm
+                recentHeartRate.append(bpm: Int(bpm), at: receivedAt)
                 if let candidate = lastR10Candidate {
                     hrCrossCheckDiffBpm = Int(bpm) - Int(candidate.candidateHrBpm)
                 }
