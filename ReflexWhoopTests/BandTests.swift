@@ -11,6 +11,16 @@ final class BandTests: XCTestCase {
         XCTAssertEqual(RecoveryBand(score: 100), .high)
     }
 
+    /// The zone strip draws each band from its bounds, so they must tile the scale.
+    func testRecoveryBandsTileTheWholeScale() {
+        let bands = RecoveryBand.allCases
+        XCTAssertEqual(bands.first?.lowerBound, RecoveryBand.scale.lowerBound)
+        XCTAssertEqual(bands.last?.upperBound, RecoveryBand.scale.upperBound)
+        for (band, next) in zip(bands, bands.dropFirst()) {
+            XCTAssertEqual(band.upperBound, next.lowerBound)
+        }
+    }
+
     func testStrainBandEdges() {
         XCTAssertEqual(StrainBand(strain: 0.5), .light)
         XCTAssertEqual(StrainBand(strain: 9.99), .light)

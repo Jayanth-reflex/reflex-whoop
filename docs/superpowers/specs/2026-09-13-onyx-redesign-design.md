@@ -66,7 +66,8 @@ colour-coded state also carries a word; colour is never the only signal.
   descriptor, since SwiftUI can't set title fonts.
 - **UI:** SF Pro text styles everywhere else, so text follows Dynamic Type.
 - **Hero numerals:** serif light, sized with `@ScaledMetric(relativeTo: .largeTitle)`,
-  tabular figures.
+  proportional figures. Tabular figures spread a light serif numeral too far apart at
+  hero size (canvas rev 2).
 - **Section headers:** footnote semibold, uppercase, tracked.
 
 ### Components (all in `UI/DesignSystem/`)

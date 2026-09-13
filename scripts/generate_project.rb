@@ -119,6 +119,9 @@ app_target.build_configurations.each do |config|
     'INFOPLIST_FILE' => "#{APP_NAME}/Info.plist",
     'GENERATE_INFOPLIST_FILE' => 'NO',
     'ASSETCATALOG_COMPILER_APPICON_NAME' => 'AppIcon',
+    'ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME' => 'AccentColor',
+    # Typed `Color(.champagne)` / `Image(.appIconPreview)` instead of strings.
+    'ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS' => 'YES',
     'SWIFT_EMIT_LOC_STRINGS' => 'YES',
     'CODE_SIGN_STYLE' => 'Automatic',
     'DEVELOPMENT_ASSET_PATHS' => '',

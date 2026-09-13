@@ -2,17 +2,29 @@ import Foundation
 
 /// WHOOP's recovery bands, on WHOOP's own edges so a score reads the same here
 /// as it does in WHOOP's app.
-enum RecoveryBand: Equatable {
+enum RecoveryBand: CaseIterable, Equatable {
     case low, moderate, high
+
+    /// WHOOP's recovery score runs 0–100.
+    static let scale = 0.0...100.0
 
     static let illnessNote = "Several signals are off from your normal."
 
     init(score: Double) {
-        self = switch score {
-        case ..<34: .low
-        case ..<67: .moderate
-        default: .high
+        self = Self.allCases.last { score >= $0.lowerBound } ?? .low
+    }
+
+    /// Where the band starts. It runs up to the next band's start.
+    var lowerBound: Double {
+        switch self {
+        case .low: Self.scale.lowerBound
+        case .moderate: 34
+        case .high: 67
         }
+    }
+
+    var upperBound: Double {
+        Self.allCases.first { $0.lowerBound > lowerBound }?.lowerBound ?? Self.scale.upperBound
     }
 
     var label: String {
