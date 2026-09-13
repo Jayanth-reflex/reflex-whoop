@@ -95,9 +95,9 @@ struct WhoopCredentialsForm: View {
             errorText = nil
             onConnected()
         } catch is CancellationError {
-            // Closing WHOOP's sign-in sheet keeps the credentials; the account
-            // screen now offers Sign in.
-            onConnected()
+            // Closing WHOOP's sign-in sheet is a choice. The credentials are
+            // saved, so Connect simply opens it again.
+            errorText = nil
         } catch {
             errorText = error.localizedDescription
         }
