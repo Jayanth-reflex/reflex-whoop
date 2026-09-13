@@ -7,11 +7,18 @@ enum Migrator {
     static func makeMigrator() -> DatabaseMigrator {
         var migrator = DatabaseMigrator()
 
-        #if DEBUG
-        // Wipes and rebuilds from scratch on any migration mismatch during development.
-        // Must never be enabled in a release build — it would delete a real user's history.
-        migrator.eraseDatabaseOnSchemaChange = true
-        #endif
+        // `eraseDatabaseOnSchemaChange` is deliberately NOT set, in any build
+        // configuration. It used to be set under `#if DEBUG`, which protected
+        // nothing: a free Apple ID ships Debug builds to the device, so the
+        // "development only" wipe was armed on the only install that has ever
+        // existed. Collected history is irreplaceable — WHOOP's backfill needs
+        // the subscription that may be the very thing that lapsed — so no code
+        // path may destroy it to save a developer a reinstall. See
+        // docs/ADR-001-data-sovereignty.md, S1.
+        //
+        // The cost is that editing an already-applied migration makes the
+        // database fail to open instead of silently resetting. That is the
+        // correct failure: don't edit shipped migrations, add new ones.
 
         migrator.registerMigration("v1_initial_schema") { db in
             try createInboxLayer(db)
