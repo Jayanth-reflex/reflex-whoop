@@ -14,8 +14,16 @@ Personal use, single member. Not submitted to the App Store.
 
 **Phases 1-3 complete and verified live against a real WHOOP account and a real
 iPhone** (not just the simulator — see "Verification" below). Phase 4 (BLE) is
-underway with one confirmed sensor decode; Phase 5 (export + MCP) is built and
-working. 89/89 tests passing.
+underway with one confirmed sensor decode, now normalized into queryable time
+series; Phase 5 (export + MCP) is built and working. 117/117 tests passing,
+Debug and Release configurations both building clean.
+
+An architecture review — [`docs/ADR-001-data-sovereignty.md`](docs/ADR-001-data-sovereignty.md)
+— reframed the project around the fact that every asset here except the local
+archive is leased from WHOOP. Its decision (source-agnostic archive; every
+source can be absent; the archive is never destroyed) is implemented, and the
+boundary it depends on is specified in
+[`docs/NEUTRAL-CONTRACT.md`](docs/NEUTRAL-CONTRACT.md).
 
 - **Phase 1 (foundation):** storage schema, `ChunkCodec`/`ChunkStore` for BLE time
   series, the ingest inbox, and the API-model normalizer.
@@ -48,8 +56,12 @@ working. 89/89 tests passing.
   `daily_summary`/`trend`/`correlations`/`workouts`/`hrv_session` tools — see
   [`mcp-server/README.md`](mcp-server/README.md) for setup.
 
-**Not yet built:** R21/r22 sensor decoding, the Live screen's HRV suite and
-cross-source validation, the Parquet conversion step beyond the CLI script.
+**Not yet built:** R21/r22 sensor decoding, and therefore the HRV suite
+(rMSSD/SDNN/pNN50/DFA-α1) and true respiratory rate — all four need a
+beat-to-beat RR channel that no confirmed Gen 5 decoder produces yet. Those
+columns exist and stay `NULL` rather than being filled with a substitute. Also
+outstanding: the Parquet conversion step beyond the CLI script, and an alarm
+threshold on the decode canary.
 
 ### Verification
 

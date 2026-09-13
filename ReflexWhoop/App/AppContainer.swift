@@ -75,6 +75,40 @@ final class AppContainer {
         _ = try? await engine.syncNow(trigger: "foreground")
     }
 
+    struct SourceSnapshot {
+        var whoop: SourceState
+        var band: SourceState
+        var archive: ArchiveSummary
+    }
+
+    /// One read of "what can still collect, and what do we already hold" —
+    /// docs/ADR-001-data-sovereignty.md's archive mode. Deliberately returns
+    /// both together: the whole point is that a dead source is reported
+    /// alongside an intact archive, never as a bare failure.
+    func sourceSnapshot() async -> SourceSnapshot {
+        let isSignedIn = (try? await auth.isSignedIn()) ?? false
+        let hasCredentials = (try? TokenStore.loadClientCredentials()) != nil
+        let snapshot = try? await database.dbPool.read { db in
+            SourceSnapshot(
+                whoop: try SourceStatus.whoop(db, isSignedIn: isSignedIn, hasCredentials: hasCredentials),
+                band: try SourceStatus.band(db),
+                archive: try SourceStatus.archive(db)
+            )
+        }
+        return snapshot ?? SourceSnapshot(
+            whoop: hasCredentials ? .unauthorized : .notConfigured,
+            band: .notConfigured,
+            archive: ArchiveSummary(firstDay: nil, lastDay: nil, dayCount: 0, bleSessionCount: 0, bleSampleCount: 0)
+        )
+    }
+
+    /// Re-derives every BLE session's time series from the inbox bytes. Exposed
+    /// as a deliberate user action (Data tab) because it rewrites every chunk.
+    func replayBleNormalization() async throws -> BleNormalizer.Stats {
+        let dbPool = database.dbPool
+        return try await Task.detached { try BleNormalizer.replay(dbPool) }.value
+    }
+
     /// Phase 4. Deliberately not a stored property: constructing a
     /// `SpikeRecorder` doesn't touch Bluetooth by itself (that only happens on
     /// `startSession`), but keeping it request-scoped means `LiveView` controls

@@ -31,6 +31,7 @@ final class Database: Sendable {
             try db.execute(sql: "PRAGMA auto_vacuum = INCREMENTAL")
         }
         try Migrator.makeMigrator().migrate(dbPool)
+        try dbPool.write { db in try Migrator.stampMeta(db) }
     }
 
     /// The default on-device location: `Documents/reflexwhoop.sqlite`. Documents is

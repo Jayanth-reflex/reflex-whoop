@@ -10,9 +10,42 @@ struct SettingsView: View {
     @State private var statusMessage: String?
     @State private var lastSyncSummary: String?
 
+    @State private var sources: AppContainer.SourceSnapshot?
+
+    private func sourceRow(_ name: String, state: SourceState) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            LabeledContent(name) {
+                Text(state.label).foregroundStyle(state.canCollect ? .green : .secondary)
+            }
+            if let detail = state.detail {
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Form {
+                if let sources {
+                    Section("Sources") {
+                        sourceRow("WHOOP API", state: sources.whoop)
+                        sourceRow("Band (BLE)", state: sources.band)
+                    }
+                    Section("Archive") {
+                        if let first = sources.archive.firstDay, let last = sources.archive.lastDay {
+                            LabeledContent("Days", value: "\(sources.archive.dayCount)")
+                            LabeledContent("Span", value: "\(first) → \(last)")
+                        } else {
+                            Text("No daily metrics yet.").foregroundStyle(.secondary)
+                        }
+                        LabeledContent("BLE sessions", value: "\(sources.archive.bleSessionCount)")
+                        LabeledContent("BLE samples", value: "\(sources.archive.bleSampleCount)")
+                        Text("Held locally and independent of any source staying available.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("WHOOP Account") {
                     if container.isSignedIn {
                         Label("Connected", systemImage: "checkmark.circle.fill")
@@ -64,7 +97,10 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
-            .task { checkSavedCredentials() }
+            .task {
+                checkSavedCredentials()
+                sources = await container.sourceSnapshot()
+            }
         }
     }
 

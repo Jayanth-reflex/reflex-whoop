@@ -17,12 +17,18 @@ struct TodayView: View {
         var anomalies: [AnomalyRow]
         var sleep: LatestSleepDetail?
         var lastSyncedAt: Date?
+        var sources: AppContainer.SourceSnapshot?
     }
 
     var body: some View {
         NavigationStack {
             Group {
-                if !container.isSignedIn {
+                // Archive mode: a source that can no longer collect does not
+                // take the screen down with it. Only an empty archive gets the
+                // "nothing here" treatment — with 438 days on disk, being
+                // signed out is a banner, not a blank page.
+                // docs/ADR-001-data-sovereignty.md.
+                if !container.isSignedIn, snapshot?.sources?.archive.isEmpty ?? true {
                     ContentUnavailableView(
                         "Not connected yet",
                         systemImage: "bolt.horizontal.circle",
@@ -59,6 +65,10 @@ struct TodayView: View {
         let metrics = snapshot.metrics! // guarded by the caller above
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                if let sources = snapshot.sources, !sources.whoop.canCollect {
+                    archiveBanner(sources)
+                }
+
                 verdict(metrics, anomalies: snapshot.anomalies)
 
                 HStack(spacing: 16) {
@@ -84,6 +94,27 @@ struct TodayView: View {
     }
 
     // MARK: - Sections
+
+    /// Shown when WHOOP can no longer collect. States what still works rather
+    /// than what broke: the analysis below is computed entirely from the local
+    /// archive and stays correct whether or not another byte ever arrives.
+    private func archiveBanner(_ sources: AppContainer.SourceSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("WHOOP source \(sources.whoop.label.lowercased())", systemImage: "archivebox")
+                .font(.subheadline.weight(.semibold))
+            if let detail = sources.whoop.detail {
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+            if let first = sources.archive.firstDay, let last = sources.archive.lastDay {
+                Text("Archive: \(sources.archive.dayCount) days, \(first) to \(last). Everything below is computed from it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+    }
 
     private func verdict(_ m: DailyMetricsRow, anomalies: [AnomalyRow]) -> some View {
         Text(verdictText(m, anomalies: anomalies))
@@ -270,12 +301,14 @@ struct TodayView: View {
         isLoading = true
         defer { isLoading = false }
         let today = RecordDAO.dayString(for: Date())
+        let sources = await container.sourceSnapshot()
         let loaded = try? await container.database.dbPool.read { db -> Snapshot in
             Snapshot(
                 metrics: try AnalysisQueries.latestDailyMetrics(db),
                 anomalies: try AnalysisQueries.anomalies(db, day: today),
                 sleep: try AnalysisQueries.latestSleepDetail(db),
-                lastSyncedAt: try AnalysisQueries.lastSyncedAt(db)
+                lastSyncedAt: try AnalysisQueries.lastSyncedAt(db),
+                sources: sources
             )
         }
         if let loaded {

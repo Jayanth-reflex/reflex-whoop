@@ -10,8 +10,14 @@ struct DataView: View {
     @State private var isExporting = false
     @State private var lastExport: Exporter.Result?
     @State private var exportError: String?
+    @State private var isReplaying = false
+    @State private var replayResult: String?
 
-    private static let tables = [
+    // `nonisolated` because `loadCounts` reads this from inside a database
+    // closure that isn't main-actor-isolated. A constant list of table names
+    // has no actor affinity; without this it is a Swift 6 concurrency error
+    // rather than the warning it is today.
+    nonisolated private static let tables = [
         "ingest_inbox", "cycles", "recoveries", "sleeps", "workouts",
         "ble_sessions", "ts_chunk", "dirty_days", "sync_log",
     ]
@@ -45,6 +51,24 @@ struct DataView: View {
                     Text("Export")
                 } footer: {
                     Text("Writes CSVs, a SQLite snapshot, and raw payloads to Documents/exports/ — reachable in Files → On My iPhone → ReflexWhoop and over the Finder cable, or share it directly above.")
+                }
+
+                Section {
+                    if isReplaying {
+                        HStack {
+                            ProgressView()
+                            Text("Re-deriving…")
+                        }
+                    } else {
+                        Button("Re-derive BLE time series") { Task { await runReplay() } }
+                    }
+                    if let replayResult {
+                        Text(replayResult).font(.footnote).foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("BLE")
+                } footer: {
+                    Text("Rebuilds every session's samples from the raw frames kept in the inbox. Safe to run any time — the bytes are the source of truth, and this only rewrites what was derived from them. Run it after a decoder improves.")
                 }
 
                 Section("Row counts") {
@@ -84,6 +108,18 @@ struct DataView: View {
             lastExport = try await Exporter.export(dbPool: container.database.dbPool, exportsRoot: exportsRoot)
         } catch {
             exportError = error.localizedDescription
+        }
+    }
+
+    private func runReplay() async {
+        isReplaying = true
+        defer { isReplaying = false }
+        do {
+            let stats = try await container.replayBleNormalization()
+            replayResult = "\(stats.sessionsProcessed) sessions · \(stats.samplesWritten) samples · \(stats.framesDecoded) frames decoded, \(stats.framesUnmapped) unmapped, \(stats.framesCorrupt) corrupt"
+            await loadCounts()
+        } catch {
+            replayResult = error.localizedDescription
         }
     }
 }

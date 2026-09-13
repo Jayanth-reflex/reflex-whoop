@@ -89,6 +89,7 @@ final class SpikeRecorder {
         guard let id = sessionID else { return }
         let frameCount = frameCount
         let byteCount = byteCount
+        let dbPool = dbPool
         Task {
             try? await dbPool.write { db in
                 try db.execute(
@@ -100,6 +101,11 @@ final class SpikeRecorder {
                     arguments: [Int64(Date().timeIntervalSince1970), frameCount, byteCount, reason, id]
                 )
             }
+            // Normalize immediately so the session is queryable the moment it
+            // ends, rather than sitting as undecoded bytes until something else
+            // happens to run. Ordered after the UPDATE above because the
+            // normalizer reads `ended_at` to bound the session's frame window.
+            _ = try? BleNormalizer.processPending(dbPool)
         }
         connection.disconnect()
         sessionID = nil

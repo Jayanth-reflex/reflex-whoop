@@ -1,3 +1,4 @@
+import Foundation
 import GRDB
 
 /// All schema changes go through this migrator, one named migration per version.
@@ -38,8 +39,52 @@ enum Migrator {
             }
         }
 
+        // `session_metrics` was designed around RR-derived HRV, which needs a
+        // beat-to-beat channel the Gen 5 decode doesn't produce yet. These
+        // columns carry what a session *can* report today — an HR summary, and
+        // the decode-coverage counters that act as the firmware-drift canary
+        // (docs/ADR-001-data-sovereignty.md, S2 and S6). The HRV columns stay
+        // and stay NULL until an RR channel exists; `signal_quality` says why.
+        migrator.registerMigration("v3_session_metrics_and_source_state") { db in
+            // `error_kind` classifies a sync failure so "your subscription
+            // lapsed" is distinguishable from "the wifi dropped" — see
+            // `SourceStatus`. Without it both are just a message string.
+            try db.alter(table: "sync_log") { t in
+                t.add(column: "error_kind", .text)
+            }
+            try db.alter(table: "session_metrics") { t in
+                t.add(column: "hr_mean", .double)
+                t.add(column: "hr_min", .integer)
+                t.add(column: "hr_max", .integer)
+                t.add(column: "hr_sample_count", .integer).notNull().defaults(to: 0)
+                t.add(column: "decoded_frame_count", .integer).notNull().defaults(to: 0)
+                t.add(column: "unmapped_frame_count", .integer).notNull().defaults(to: 0)
+                t.add(column: "corrupt_frame_count", .integer).notNull().defaults(to: 0)
+            }
+        }
+
         return migrator
     }
+
+    /// Stamps the database with the schema and decoder versions that wrote it,
+    /// so a pulled snapshot is self-describing without its export manifest
+    /// (docs/ADR-001-data-sovereignty.md, S7). Called after every migration.
+    static func stampMeta(_ db: GRDB.Database) throws {
+        let entries = [
+            ("schema_version", latestMigrationName),
+            ("api_decoder_version", String(ApiNormalizer.decoderVersion)),
+            ("ble_decoder_version", String(BleNormalizer.decoderVersion)),
+            ("stamped_at", String(Int64(Date().timeIntervalSince1970))),
+        ]
+        for (key, value) in entries {
+            try db.execute(
+                sql: "INSERT INTO schema_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                arguments: [key, value]
+            )
+        }
+    }
+
+    static let latestMigrationName = "v3_session_metrics_and_source_state"
 
     // MARK: - Layer 1: Inbox (append-only, lossless, source-agnostic)
 

@@ -67,7 +67,13 @@ struct ApiSyncEngine {
             try await finishSyncLog(logID, requestsMade: summary.requestsMade, recordsUpserted: summary.recordsUpserted, error: nil)
         } catch {
             summary.error = error.localizedDescription
-            try? await finishSyncLog(logID, requestsMade: summary.requestsMade, recordsUpserted: summary.recordsUpserted, error: error.localizedDescription)
+            try? await finishSyncLog(
+                logID,
+                requestsMade: summary.requestsMade,
+                recordsUpserted: summary.recordsUpserted,
+                error: error.localizedDescription,
+                errorKind: SyncErrorKind.classify(error)
+            )
             throw error
         }
 
@@ -235,11 +241,11 @@ struct ApiSyncEngine {
         }
     }
 
-    private func finishSyncLog(_ id: Int64, requestsMade: Int, recordsUpserted: Int, error: String?) async throws {
+    private func finishSyncLog(_ id: Int64, requestsMade: Int, recordsUpserted: Int, error: String?, errorKind: SyncErrorKind? = nil) async throws {
         try await dbPool.write { db in
             try db.execute(
-                sql: "UPDATE sync_log SET finished_at = ?, requests_made = ?, records_upserted = ?, error = ? WHERE id = ?",
-                arguments: [Int64(Date().timeIntervalSince1970), requestsMade, recordsUpserted, error, id]
+                sql: "UPDATE sync_log SET finished_at = ?, requests_made = ?, records_upserted = ?, error = ?, error_kind = ? WHERE id = ?",
+                arguments: [Int64(Date().timeIntervalSince1970), requestsMade, recordsUpserted, error, errorKind?.rawValue, id]
             )
         }
     }

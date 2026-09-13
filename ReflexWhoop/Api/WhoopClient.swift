@@ -7,11 +7,23 @@ import Foundation
 actor WhoopClient {
     enum ClientError: LocalizedError {
         case http(status: Int, body: String)
+        /// The token authenticated fine but the account isn't entitled to the
+        /// data — which is what a lapsed membership looks like from here.
+        /// Separated from `.http` because the app's response is different in
+        /// kind: not "retry later", but "this source is inactive, fall back to
+        /// the archive" (see `SourceStatus`, docs/ADR-001-data-sovereignty.md).
+        ///
+        /// Mapped from HTTP 403. Not verified against a genuinely lapsed
+        /// account — no such account has been available to test with — so
+        /// treat the mapping as the best available signal rather than a
+        /// confirmed fact.
+        case forbidden(body: String)
         case invalidResponse
 
         var errorDescription: String? {
             switch self {
             case .http(let status, let body): "WHOOP API error \(status): \(body.prefix(500))"
+            case .forbidden(let body): "WHOOP denied access to this data (403): \(body.prefix(500))"
             case .invalidResponse: "Non-HTTP response from WHOOP API"
             }
         }
@@ -123,6 +135,9 @@ actor WhoopClient {
             // from ours, or the token was revoked and re-issued) and retry once.
             try await auth.forceRefresh()
             return try await request(path: path, method: method, query: query, attempt: attempt + 1)
+
+        case 403:
+            throw ClientError.forbidden(body: String(data: data, encoding: .utf8) ?? "")
 
         case 429 where attempt <= maxRetries:
             let resetSeconds = http.value(forHTTPHeaderField: "X-RateLimit-Reset").flatMap(Int.init)

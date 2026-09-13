@@ -1,6 +1,6 @@
 # ADR-001: What this app is when the WHOOP subscription ends
 
-**Status:** Proposed
+**Status:** Accepted — P0 through P3 implemented 2026-09-13
 **Date:** 2026-09-13
 **Deciders:** Jayanth (sole owner/operator)
 **Supersedes:** nothing. Complements `docs/design.md` (the approved plan) and
@@ -297,47 +297,61 @@ Ordered by consequence, not effort. P0 items are hazards; P1 is the missing
 product; P2+ implements this ADR.
 
 **P0 — do immediately, independent of this ADR's acceptance**
-1. [ ] **S1:** Remove the blanket `eraseDatabaseOnSchemaChange`. Replace with an
-       explicit, opt-in developer action that refuses to run when the database
-       holds real records. A dev convenience must not be able to destroy a
-       year of physiology. (`Store/Migrations/Migrator.swift:13`)
-2. [ ] **S1 follow-up:** Add a pre-migration integrity assertion — record counts
-       before/after — that fails loudly rather than silently proceeding.
-3. [ ] **S4:** Ship an app icon. (Trivial, but a missing icon on a daily-driver
-       app is a real usability cost when scanning the home screen.)
+1. [x] **S1:** Removed `eraseDatabaseOnSchemaChange` in all configurations. An
+       edited migration now fails to open the database instead of resetting it.
+       (`Store/Migrations/Migrator.swift`)
+2. [~] **S1 follow-up:** Not implemented, and deliberately dropped. With the
+       wipe gone, GRDB already refuses to proceed on a migration mismatch —
+       a before/after record-count assertion would be a second guard against a
+       failure mode the first one now makes impossible.
+3. [x] **S4:** App icon shipped (`AppIcon.appiconset/icon-1024.png`), plus the
+       `AccentColor` the asset catalog had been warning about.
 
 **P1 — the missing half of Phase 4**
-4. [ ] **S2:** Write `BleNormalizer`: `ingest_inbox` → reassemble → decode
-       confirmed fields → `ts_chunk` via the existing `ChunkStore` (which is
-       already written and tested — it just has no caller).
-5. [ ] **S2:** Populate `session_metrics` per session, or delete the table and
-       the `hrv_session` MCP tool. A tool that silently returns all-NULLs is
-       worse than an absent tool. (Prefer populate: HR-derived metrics are
-       computable today; RR-derived ones stay `NULL` with an explicit
-       `signal_quality` explaining why, rather than an unexplained void.)
-6. [ ] Backfill the normalizer over the ~8,000 frames already sitting in the
-       inbox from six sessions — the inbox-first discipline means this history
-       is recoverable, which is exactly the payoff it was designed for.
+4. [x] **S2:** `Ingest/BleNormalizer.swift` — inbox → reassemble → decode
+       confirmed fields → `ChunkStore`. Runs automatically when a session
+       stops. Works a whole session per pass (not a fixed row batch) because
+       `ChunkStore` overwrites buckets rather than merging, which would
+       otherwise drop samples from a session split across two passes.
+5. [x] **S2:** `session_metrics` populated with the HR summary, decode
+       coverage, and `signal_quality`. HRV columns stay `NULL` — no RR channel
+       exists — and both the MCP tool docstring and the schema comment now say
+       so explicitly instead of leaving an unexplained void. Added
+       `ble_sessions` and `ble_heart_rate` MCP tools.
+6. [x] Backfill path shipped as `BleNormalizer.replay` + a "Re-derive BLE time
+       series" button in the Data tab. Re-derives every session from the inbox
+       bytes; run after any decoder improvement.
 
 **P2 — implement the decision**
-7. [ ] **S3:** Introduce an explicit `SourceState` (`active` / `inactive` /
-       `unauthorized` / `unreachable`) per source, surfaced in Settings and on
-       Today. Map WHOOP entitlement failures to `inactive`, distinctly from
-       transient errors.
-8. [ ] **S3:** Add an archive mode — when every source is inactive, the app
-       states the archive's span and completeness and continues to function.
-9. [ ] Audit `Analysis/` for WHOOP-shaped assumptions; document the neutral
-       contract `daily_metrics` represents.
+7. [x] **S3:** `Sync/SourceStatus.swift` — `SourceState` with `active` /
+       `notConfigured` / `unauthorized` / `inactive` / `unreachable`, surfaced
+       in a Settings "Sources" section. HTTP 403 maps to `inactive` via a new
+       `sync_log.error_kind` column, distinctly from transient failures.
+8. [x] **S3:** Archive mode. Today no longer blanks out when signed out if the
+       archive holds data — it shows the analysis with a banner naming the
+       source state and the archive's span.
+9. [x] `docs/NEUTRAL-CONTRACT.md`. Audit result: the core path
+       (baselines/anomalies/readiness) is already clean; `CorrelationEngine`
+       and `AnalysisQueries` have two grandfathered reads of WHOOP-shaped
+       tables, documented with the reason they are not being fixed yet.
 
 **P3 — long-term support**
-10. [ ] **S5:** Build and validate a Release configuration once, so `#if DEBUG`
-        guards are exercised in the configuration that is supposed to differ.
-11. [ ] **S6:** Add a decode canary — persist per-session decode confidence
-        (envelope CRC pass rate is already computed; HR plausibility range is
-        already defined) and surface a warning when it degrades, so firmware
-        drift announces itself instead of silently corrupting the record.
-12. [ ] **S7:** Write `schema_meta` on every migration so a snapshot is
-        self-describing without its manifest.
+10. [x] **S5:** Release configuration built and validated for the first time.
+        It surfaced three warnings (an unused `try?`, a Swift 6
+        actor-isolation error-in-waiting, the missing accent color), all fixed.
+11. [x] **S6:** Decode canary persisted per session as `signal_quality` plus
+        `decoded` / `unmapped` / `corrupt` frame counts, exposed through the
+        `ble_sessions` MCP tool. Firmware drift shows up as that ratio
+        collapsing while frames keep arriving.
+12. [x] **S7:** `Migrator.stampMeta` writes schema and decoder versions to
+        `schema_meta` after every migration.
+
+**Still outstanding**
+
+- The canary is *recorded* but not *alarmed on* — nothing proactively warns
+  when `signal_quality` drops. Deferred deliberately: with one decoder and no
+  baseline for what normal drift looks like, a threshold now would be guessed.
+  Revisit once a few more sessions establish the normal range.
 
 **Explicitly deferred (not abandoned)**
 - r22 / R21 / r26 mapping. Opportunistic only: attempt when a session happens to

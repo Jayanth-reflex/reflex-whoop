@@ -190,16 +190,50 @@ def workouts(sport: str | None = None, start: str | None = None, end: str | None
 
 
 @mcp.tool()
+def ble_sessions() -> list[dict[str, Any]]:
+    """Every recorded BLE session, newest first, with its decode coverage.
+
+    `signal_quality` is the share of CRC-valid frames that produced a sample; a
+    sudden drop across sessions is the firmware-drift signal (the band changed
+    what its packets mean and the decoder has not caught up yet)."""
+    conn = _connect()
+    try:
+        cursor = conn.execute(
+            """
+            SELECT s.id, s.started_at, s.ended_at, s.mode, s.byte_count,
+                   m.hr_sample_count, m.hr_mean, m.hr_min, m.hr_max,
+                   m.signal_quality, m.decoded_frame_count,
+                   m.unmapped_frame_count, m.corrupt_frame_count
+            FROM ble_sessions s
+            LEFT JOIN session_metrics m ON m.session_id = s.id
+            ORDER BY s.started_at DESC
+            """
+        )
+        return _rows(cursor, limit=1000)
+    finally:
+        conn.close()
+
+
+@mcp.tool()
 def hrv_session(session_id: str) -> dict[str, Any] | None:
-    """Per-BLE-session RR-derived HRV suite (rMSSD, SDNN, pNN50, DFA-alpha1)
-    plus session metadata, if that session has been analyzed."""
+    """One BLE session's derived metrics.
+
+    Note on what is and isn't available: the RR-derived HRV suite (rmssd_milli,
+    sdnn_milli, pnn50_pct, dfa_alpha1, rr_artifact_rejection_pct) and
+    respiratory_rate all require a beat-to-beat RR interval channel, which the
+    Gen 5 BLE reverse-engineering has not produced a confirmed decoder for.
+    They are NULL for every session and will stay NULL until it does — that is
+    an honest absence, not a computation failure. The HR summary and decode
+    coverage fields below are real."""
     conn = _connect()
     try:
         row = conn.execute(
             """
             SELECT s.id, s.started_at, s.ended_at, s.mode, s.channels_json,
                    m.rmssd_milli, m.sdnn_milli, m.pnn50_pct, m.dfa_alpha1,
-                   m.rr_artifact_rejection_pct, m.respiratory_rate, m.signal_quality
+                   m.rr_artifact_rejection_pct, m.respiratory_rate, m.signal_quality,
+                   m.hr_mean, m.hr_min, m.hr_max, m.hr_sample_count,
+                   m.decoded_frame_count, m.unmapped_frame_count, m.corrupt_frame_count
             FROM ble_sessions s
             LEFT JOIN session_metrics m ON m.session_id = s.id
             WHERE s.id = ?
@@ -207,6 +241,27 @@ def hrv_session(session_id: str) -> dict[str, Any] | None:
             (session_id,),
         ).fetchone()
         return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+def ble_heart_rate(session_id: str) -> list[dict[str, Any]]:
+    """Per-minute heart rate for one BLE session: minute_start (unix seconds),
+    min/mean/max bpm, and how many samples backed each minute."""
+    conn = _connect()
+    try:
+        cursor = conn.execute(
+            """
+            SELECT minute_start, min_val AS min_bpm, mean_val AS mean_bpm,
+                   max_val AS max_bpm, sample_count
+            FROM ts_rollup_minute
+            WHERE session_id = ? AND channel = 'hr'
+            ORDER BY minute_start
+            """,
+            (session_id,),
+        )
+        return _rows(cursor, limit=10000)
     finally:
         conn.close()
 
