@@ -10,6 +10,8 @@ struct RangeStrip: View {
     let value: Double?
     let range: NormalRange?
 
+    @Environment(\.colorSchemeContrast) private var contrast
+
     /// The strip spans this many standard deviations either side of the mean,
     /// so an unusual reading (2 SD) still lands clear of the ends.
     private static let spread = 3.2
@@ -22,7 +24,9 @@ struct RangeStrip: View {
         Canvas { context, size in
             let midY = size.height / 2
             let track = CGRect(x: 0, y: midY - Self.trackHeight / 2, width: size.width, height: Self.trackHeight)
-            context.fill(Capsule().path(in: track), with: .style(.quinary))
+            // Increase Contrast lifts the band and track apart to 3:1 or more.
+            let isIncreased = contrast == .increased
+            context.fill(Capsule().path(in: track), with: isIncreased ? .style(.quaternary) : .style(.quinary))
 
             guard let range, range.standardDeviation > 0 else { return }
             let spread = Self.spread * range.standardDeviation
@@ -38,7 +42,7 @@ struct RangeStrip: View {
                 width: max(scale.x(range.upperBound) - bandStart, Self.trackHeight),
                 height: Self.trackHeight
             )
-            context.fill(Capsule().path(in: band), with: .style(.tertiary))
+            context.fill(Capsule().path(in: band), with: isIncreased ? .style(.secondary) : .style(.tertiary))
 
             guard let value else { return }
             let centre = CGPoint(x: scale.x(value), y: midY)

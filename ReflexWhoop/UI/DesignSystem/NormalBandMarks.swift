@@ -5,6 +5,8 @@ import SwiftUI
 /// wherever a day has no value or no range.
 struct NormalBandMarks: ChartContent {
     let points: [MetricPoint]
+    /// Stronger under Increase Contrast; chart content can't read the environment itself.
+    var isContrastIncreased = false
 
     var body: some ChartContent {
         let ranged = points.filter { $0.range != nil }
@@ -20,6 +22,6 @@ struct NormalBandMarks: ChartContent {
                 }
             }
         }
-        .foregroundStyle(.quaternary)
+        .foregroundStyle(isContrastIncreased ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.quaternary))
     }
 }

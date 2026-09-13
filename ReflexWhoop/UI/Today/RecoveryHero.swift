@@ -15,8 +15,9 @@ struct RecoveryHero: View {
 
             if let score {
                 let band = RecoveryBand(score: score)
-                HStack(alignment: .firstTextBaseline, spacing: 14) {
+                AdaptiveRow(alignment: .firstTextBaseline, spacing: 14, pinsTrailing: false) {
                     HeroValue(Metric.recovery.formatted(score), unit: Metric.recovery.unit)
+                } trailing: {
                     StatusLabel(text: band.label, tint: band.tint)
                         .font(.subheadline.weight(.semibold))
                 }

@@ -8,11 +8,11 @@ struct StrainRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
+            AdaptiveRow(alignment: .firstTextBaseline) {
                 Text(isToday ? "Strain today" : "Strain")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
-                Spacer()
+            } trailing: {
                 if let strain {
                     Text("\(Text(Metric.strain.formatted(strain)).font(.display(.title))) \(Text(detail(for: strain)).font(.subheadline).foregroundStyle(.secondary))")
                 } else {

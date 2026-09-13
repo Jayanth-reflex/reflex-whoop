@@ -8,7 +8,7 @@ struct HeartRateTodayCard: View {
     var body: some View {
         if let average = span.averageBpm, let lowest = span.lowestBpm, let highest = span.highestBpm {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 26) {
+                StatRow {
                     StatValue(title: "Average", value: bpm(average), unit: "bpm")
                     StatValue(title: "Lowest", value: bpm(lowest), unit: "bpm")
                     StatValue(title: "Highest", value: bpm(highest), unit: "bpm")

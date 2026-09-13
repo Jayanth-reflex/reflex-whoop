@@ -6,7 +6,7 @@ struct SleepCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
+            AdaptiveRow(alignment: .firstTextBaseline) {
                 if let asleep = sleep.asleepMilli {
                     let duration = Text(Duration.milliseconds(asleep), format: .units(allowed: [.hours, .minutes], width: .narrow))
                         .font(.title.weight(.semibold))
@@ -15,7 +15,7 @@ struct SleepCard: View {
                     Text("No stage totals from WHOOP")
                         .foregroundStyle(.secondary)
                 }
-                Spacer()
+            } trailing: {
                 Text("\(sleep.interval.lowerBound, format: timeStyle) – \(sleep.interval.upperBound, format: .dateTime.hour().minute())")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)

@@ -20,13 +20,10 @@ struct RecordingDetailView: View {
 
                 if let average = recording.averageBpm, let lowest = recording.lowestBpm, let highest = recording.highestBpm {
                     Section {
-                        HStack(alignment: .top) {
+                        StatRow {
                             StatValue(title: "Average", value: average.formatted(.number.precision(.fractionLength(0))), unit: "bpm")
-                                .frame(maxWidth: .infinity, alignment: .leading)
                             StatValue(title: "Lowest", value: lowest.formatted(), unit: "bpm")
-                                .frame(maxWidth: .infinity, alignment: .leading)
                             StatValue(title: "Highest", value: highest.formatted(), unit: "bpm")
-                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                 }

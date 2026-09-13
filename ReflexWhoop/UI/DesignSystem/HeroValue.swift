@@ -21,12 +21,16 @@ struct HeroValue: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(value)
                 .font(.system(size: numeralSize, weight: .light, design: .serif))
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
             if let unit {
                 Text(unit)
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
         }
+        // Already display-sized; past this it crowds out everything else.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .accessibilityElement(children: .combine)
     }
 }

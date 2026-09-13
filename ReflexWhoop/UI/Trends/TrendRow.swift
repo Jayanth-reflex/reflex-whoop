@@ -6,7 +6,7 @@ struct TrendRow: View {
     let points: [MetricPoint]
 
     var body: some View {
-        HStack(spacing: 12) {
+        AdaptiveRow {
             VStack(alignment: .leading, spacing: 2) {
                 Text(metric.label)
                     .font(.subheadline)
@@ -14,7 +14,7 @@ struct TrendRow: View {
                 MetricValueText(metric: metric, value: points.last?.value)
                     .font(.title2)
             }
-            Spacer(minLength: 12)
+        } trailing: {
             Sparkline(points: points)
                 .frame(width: 104, height: 34)
                 .opacity(points.count > 1 ? 1 : 0)

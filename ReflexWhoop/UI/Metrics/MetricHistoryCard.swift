@@ -29,13 +29,10 @@ struct MetricHistoryCard: View {
 
             Divider()
 
-            HStack(alignment: .top) {
+            StatRow {
                 StatValue(title: "Average", value: metric.formatted(summary.average), unit: metric.unit)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 StatValue(title: "Range", value: "\(metric.formatted(summary.lowest))–\(metric.formatted(summary.highest))", unit: metric.unit)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 StatValue(title: metric.periodNoun, value: summary.count.formatted())
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(.vertical, 8)

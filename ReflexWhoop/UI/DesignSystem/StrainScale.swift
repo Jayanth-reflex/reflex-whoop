@@ -26,6 +26,8 @@ struct StrainScale: View {
             }
             .font(.caption)
             .foregroundStyle(.secondary)
+            // Labels share one line along the scale; beyond this they collide.
+            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         }
         .accessibilityHidden(true)
     }

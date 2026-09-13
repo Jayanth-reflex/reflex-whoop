@@ -12,7 +12,7 @@ struct VitalRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
+        AdaptiveRow {
             VStack(alignment: .leading, spacing: 4) {
                 Text(metric.label)
                 Text(status == .noReading ? "No reading that night" : status.label)
@@ -20,8 +20,8 @@ struct VitalRow: View {
                     .bold(status.isUnusual)
                     .foregroundStyle(status.foreground)
             }
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 6) {
+        } trailing: {
+            TrailingStack {
                 MetricValueText(metric: metric, value: value)
                 RangeStrip(value: value, range: range)
                     .frame(width: 118)

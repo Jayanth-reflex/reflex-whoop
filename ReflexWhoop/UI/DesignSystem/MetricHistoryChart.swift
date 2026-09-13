@@ -7,9 +7,11 @@ struct MetricHistoryChart: View {
     let points: [MetricPoint]
     let metric: Metric
 
+    @Environment(\.colorSchemeContrast) private var contrast
+
     var body: some View {
         Chart {
-            NormalBandMarks(points: points)
+            NormalBandMarks(points: points, isContrastIncreased: contrast == .increased)
             GappedLineMarks(samples: points, maximumGap: MetricPoint.maximumGap, time: \.date, value: \.value, valueLabel: metric.label)
                 .foregroundStyle(.primary)
                 .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))

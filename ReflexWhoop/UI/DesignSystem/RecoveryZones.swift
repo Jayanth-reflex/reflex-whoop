@@ -7,6 +7,8 @@ struct RecoveryZones: View {
     let score: Double
     let usual: NormalRange?
 
+    @Environment(\.colorSchemeContrast) private var contrast
+
     /// The marker's radius plus half its stroke, so it isn't clipped at 0 or 100.
     private static let inset = 11.5
     private static let markerRadius = 10.0
@@ -23,6 +25,7 @@ struct RecoveryZones: View {
                 }
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             }
 
             Canvas(renderer: draw)
@@ -36,6 +39,8 @@ struct RecoveryZones: View {
             }
             .font(.caption)
             .foregroundStyle(.secondary)
+            // Labels share one line along the scale; beyond this they collide.
+            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(usual.map(usualText) ?? "")
@@ -77,7 +82,7 @@ struct RecoveryZones: View {
                 width: scale.x(band.upperBound) - endGap - start,
                 height: Self.zoneHeight
             )
-            context.fill(Capsule().path(in: zone), with: band == current ? .color(band.tint) : .style(.quaternary))
+            context.fill(Capsule().path(in: zone), with: band == current ? .color(band.tint) : .style(contrast == .increased ? .tertiary : .quaternary))
         }
 
         let marker = Path(circleAround: CGPoint(x: scale.x(score), y: zoneMidY), radius: Self.markerRadius)

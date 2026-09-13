@@ -18,7 +18,7 @@ struct ArchiveSummaryHeader: View {
             }
             .accessibilityElement(children: .combine)
 
-            HStack(spacing: 12) {
+            StatRow {
                 ArchiveTile(value: archive.bleSessionCount.formatted(), caption: "Recordings")
                 ArchiveTile(value: archive.bleSampleCount.formatted(.number.notation(.compactName)), caption: "Readings")
                 ArchiveTile(value: byteCount.formatted(.byteCount(style: .file)), caption: "On disk")

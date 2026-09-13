@@ -28,10 +28,10 @@ struct LiveHeartRateSection: View {
 
             if recorder.recentHeartRate.readings.count > 1 {
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack {
+                    AdaptiveRow {
                         Text("Last 20 minutes")
                             .font(.footnote.weight(.semibold))
-                        Spacer()
+                    } trailing: {
                         if let range = recorder.recentHeartRate.bpmRange {
                             Text("\(range.lowerBound.formatted())–\(range.upperBound.formatted()) bpm")
                                 .font(.footnote)

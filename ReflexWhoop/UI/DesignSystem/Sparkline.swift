@@ -6,9 +6,11 @@ import SwiftUI
 struct Sparkline: View {
     let points: [MetricPoint]
 
+    @Environment(\.colorSchemeContrast) private var contrast
+
     var body: some View {
         Chart {
-            NormalBandMarks(points: points)
+            NormalBandMarks(points: points, isContrastIncreased: contrast == .increased)
             GappedLineMarks(samples: points, maximumGap: MetricPoint.maximumGap, time: \.date, value: \.value, valueLabel: "Value")
                 .foregroundStyle(.secondary)
                 .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
