@@ -26,7 +26,9 @@ enum AnomalyEngine {
     /// Also the window every normal range on screen uses (`NormalRange`).
     static let baselineWindow = 60
 
-    private struct IllnessDetail: Encodable {
+    /// What an illness flag's `detail_json` holds. `triggeredSignals` are
+    /// metric columns, in the order the engine checks them.
+    struct IllnessDetail: Codable {
         var triggeredSignals: [String]
         var zScores: [String: Double]
     }

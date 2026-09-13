@@ -4,21 +4,24 @@ struct RootView: View {
     @Environment(AppContainer.self) private var container
     @Environment(\.scenePhase) private var scenePhase
 
+    @State private var selection = AppTab.today
+
     var body: some View {
-        TabView {
-            TodayView()
-                .tabItem { Label("Today", systemImage: "circle.dashed.inset.filled") }
-            TrendsView()
-                .tabItem { Label("Trends", systemImage: "chart.xyaxis.line") }
-            InsightsView()
-                .tabItem { Label("Patterns", systemImage: "sparkles") }
-            LiveView()
-                .tabItem { Label("Live", systemImage: "waveform.path.ecg") }
-            DataView()
-                .tabItem { Label("Data", systemImage: "internaldrive") }
+        TabView(selection: $selection) {
+            Tab("Today", systemImage: "sun.max", value: AppTab.today) {
+                TodayView()
+            }
+            Tab("Trends", systemImage: "chart.line.uptrend.xyaxis", value: AppTab.trends) {
+                TrendsView()
+            }
+            Tab("Band", systemImage: "applewatch", value: AppTab.band) {
+                LiveView()
+            }
+            Tab("Archive", systemImage: "archivebox", value: AppTab.archive) {
+                DataView()
+            }
         }
-        .tint(Theme.vital)
-        .toolbarBackground(Theme.ink, for: .tabBar)
+        .tint(Color.accent)
         // Covers both a cold launch and a background→foreground transition —
         // the design doc's third sync trigger alongside manual and
         // BGAppRefreshTask. Debounced internally, so this is safe to fire on
@@ -33,8 +36,4 @@ struct RootView: View {
             }
         }
     }
-}
-
-#Preview {
-    RootView()
 }

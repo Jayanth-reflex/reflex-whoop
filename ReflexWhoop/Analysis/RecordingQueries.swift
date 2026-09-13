@@ -53,6 +53,35 @@ enum RecordingQueries {
         }
     }
 
+    /// Every recording's heart rate from `start` onwards, one reading per
+    /// minute. Minutes covered by more than one session are merged, weighted
+    /// by their raw reading counts.
+    static func heartRate(_ db: GRDB.Database, since start: Date) throws -> HeartRateSpan {
+        let rows = try Row.fetchAll(
+            db,
+            sql: """
+            SELECT minute_start,
+                   SUM(mean_val * sample_count) AS weighted_sum, SUM(sample_count) AS samples,
+                   MIN(min_val) AS lowest, MAX(max_val) AS highest
+            FROM ts_rollup_minute
+            WHERE channel = ? AND minute_start >= ? AND mean_val IS NOT NULL AND sample_count > 0
+            GROUP BY minute_start
+            ORDER BY minute_start
+            """,
+            arguments: [BleNormalizer.Channel.heartRate, Int64(start.timeIntervalSince1970)]
+        )
+        let totalSamples = rows.reduce(0) { $0 + ($1["samples"] as Int64) }
+        let weightedSum = rows.reduce(0) { $0 + ($1["weighted_sum"] as Double) }
+        return HeartRateSpan(
+            readings: rows.map { row in
+                HeartRateReading(time: date(fromSeconds: row["minute_start"]), bpm: row["weighted_sum"] / Double(row["samples"] as Int64))
+            },
+            averageBpm: totalSamples > 0 ? weightedSum / Double(totalSamples) : nil,
+            lowestBpm: rows.compactMap { $0["lowest"] as Double? }.min(),
+            highestBpm: rows.compactMap { $0["highest"] as Double? }.max()
+        )
+    }
+
     private static func date(fromSeconds seconds: Int64) -> Date {
         Date(timeIntervalSince1970: TimeInterval(seconds))
     }

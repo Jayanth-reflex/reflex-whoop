@@ -53,4 +53,38 @@ final class RecordingQueriesTests: XCTestCase {
         XCTAssertEqual(readings.map(\.bpm), [67, 62, 99])
         XCTAssertEqual(readings.first?.time, Date(timeIntervalSince1970: 5040))
     }
+
+    func testHeartRateSinceSkipsEarlierMinutesAndWeightsTheAverage() throws {
+        let span = try database.dbPool.read { try RecordingQueries.heartRate($0, since: Date(timeIntervalSince1970: 5100)) }
+        XCTAssertEqual(span.readings.map(\.bpm), [62, 99])
+        XCTAssertEqual(span.readings.first?.time, Date(timeIntervalSince1970: 5100))
+        XCTAssertEqual(span.lowestBpm, 60)
+        XCTAssertEqual(span.highestBpm, 101)
+        XCTAssertEqual(span.averageBpm, 80.5)
+    }
+
+    /// Two sessions covering the same minute become one reading, so the chart
+    /// never gets two points at one time.
+    func testHeartRateMergesSessionsThatShareAMinute() throws {
+        try database.dbPool.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO ts_rollup_minute (channel, session_id, minute_start, mean_val, min_val, max_val, sample_count)
+                VALUES (?, 'old', 5100, 70, 55, 90, 20)
+                """,
+                arguments: [BleNormalizer.Channel.heartRate]
+            )
+        }
+        let span = try database.dbPool.read { try RecordingQueries.heartRate($0, since: Date(timeIntervalSince1970: 5100)) }
+        XCTAssertEqual(span.readings.map(\.bpm), [64, 99])
+        XCTAssertEqual(span.lowestBpm, 55)
+        XCTAssertEqual(span.averageBpm, 79)
+    }
+
+    func testHeartRateWithNoReadingsHasNoStatistics() throws {
+        let span = try database.dbPool.read { try RecordingQueries.heartRate($0, since: Date(timeIntervalSince1970: 99_999)) }
+        XCTAssertTrue(span.readings.isEmpty)
+        XCTAssertNil(span.averageBpm)
+        XCTAssertNil(span.lowestBpm)
+    }
 }

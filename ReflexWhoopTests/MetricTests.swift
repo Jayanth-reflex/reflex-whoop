@@ -27,7 +27,14 @@ final class MetricTests: XCTestCase {
         XCTAssertEqual(Metric.heartRateVariability.formatted(74.14, locale: posix), "74")
     }
 
+    func testValueWithUnit() {
+        XCTAssertEqual(Metric.recovery.formattedWithUnit(85, locale: posix), "85%")
+        XCTAssertEqual(Metric.heartRateVariability.formattedWithUnit(74, locale: posix), "74 ms")
+        XCTAssertEqual(Metric.strain.formattedWithUnit(0.5, locale: posix), "0.5")
+    }
+
     func testSections() {
-        XCTAssertEqual(Metric.allCases.filter { $0.section == .scores }, [.recovery, .strain, .sleepPerformance])
+        XCTAssertEqual(Metric.Section.scores.metrics, [.recovery, .strain, .sleepPerformance])
+        XCTAssertEqual(Metric.Section.overnight.metrics, [.heartRateVariability, .restingHeartRate, .breathingRate, .skinTemperature, .bloodOxygen])
     }
 }

@@ -8,8 +8,6 @@ enum RecoveryBand: CaseIterable, Equatable {
     /// WHOOP's recovery score runs 0–100.
     static let scale = 0.0...100.0
 
-    static let illnessNote = "Several signals are off from your normal."
-
     init(score: Double) {
         self = Self.allCases.last { score >= $0.lowerBound } ?? .low
     }
@@ -35,13 +33,17 @@ enum RecoveryBand: CaseIterable, Equatable {
         }
     }
 
+    /// What the score means for the day. A day `AnomalyEngine` flagged for
+    /// possible illness is never a day to push, whatever the score.
+    ///
     /// Never quotes sleep debt: the stored value is WHOOP's capped extra-need
     /// term, not debt owed (docs/DECISIONS.md, "Readiness hidden").
-    var verdict: String {
-        switch self {
-        case .low: "Low recovery. Keep today easy."
-        case .moderate: "Moderate recovery. Train, but keep something in reserve."
-        case .high: "Well recovered. A good day to train hard."
+    func verdict(illnessFlagged: Bool) -> String {
+        switch (self, illnessFlagged) {
+        case (.low, _): "Low recovery. Keep today easy."
+        case (.moderate, false): "Moderate recovery. Train, but keep something in reserve."
+        case (.high, false): "Well recovered. A good day to train hard."
+        case (.moderate, true), (.high, true): "Recovery looks fine, but several signals are off. Keep today easy."
         }
     }
 }

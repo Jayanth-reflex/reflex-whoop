@@ -9,12 +9,12 @@ struct StatusLabel<Tint: ShapeStyle>: View {
     @ScaledMetric(relativeTo: .body) private var dotSize = 8.0
 
     var body: some View {
-        Label {
-            Text(text)
-        } icon: {
+        HStack(spacing: dotSize * 0.75) {
             Circle()
                 .fill(tint)
                 .frame(width: dotSize, height: dotSize)
+            Text(text)
         }
+        .accessibilityElement(children: .combine)
     }
 }

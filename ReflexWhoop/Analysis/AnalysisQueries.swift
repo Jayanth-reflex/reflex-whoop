@@ -159,6 +159,14 @@ struct AnomalyRow: Decodable, FetchableRecord, Identifiable {
         case zScore = "z_score"
         case detailJson = "detail_json"
     }
+
+    /// The signals behind an illness flag. Empty when the detail can't be
+    /// read: the flag still stands, it just can't name its signals.
+    var illnessSignals: [Metric] {
+        guard let data = detailJson?.data(using: .utf8),
+              let detail = try? JSONDecoder().decode(AnomalyEngine.IllnessDetail.self, from: data) else { return [] }
+        return detail.triggeredSignals.compactMap(Metric.init(column:))
+    }
 }
 
 struct LatestSleepDetail: Decodable, FetchableRecord {
@@ -179,7 +187,16 @@ struct LatestSleepDetail: Decodable, FetchableRecord {
         case performancePercentage = "sleep_performance_percentage"
     }
 
-    var durationHours: Double { Double(end - start) / 3600 }
+    var interval: Range<Date> {
+        Date(timeIntervalSince1970: TimeInterval(start))..<Date(timeIntervalSince1970: TimeInterval(end))
+    }
+
+    /// Ended today or yesterday, so "last night" is true of it.
+    func isFromLastNight(calendar: Calendar = .current, now: Date = .now) -> Bool {
+        let end = interval.upperBound
+        return calendar.isDate(end, inSameDayAs: now)
+            || calendar.date(byAdding: .day, value: -1, to: now).map { calendar.isDate(end, inSameDayAs: $0) } == true
+    }
 
     /// Light + deep + REM. `nil` when WHOOP sent no stage totals.
     var asleepMilli: Int64? {

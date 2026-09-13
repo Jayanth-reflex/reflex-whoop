@@ -10,6 +10,11 @@ enum Metric: String, CaseIterable, Identifiable, Hashable {
 
     enum Section: CaseIterable {
         case scores, overnight
+
+        /// This section's metrics, in display order.
+        var metrics: [Metric] {
+            Metric.allCases.filter { $0.section == self }
+        }
     }
 
     var id: String { rawValue }
@@ -74,6 +79,19 @@ enum Metric: String, CaseIterable, Identifiable, Hashable {
 
     func formatted(_ value: Double, locale: Locale = .current) -> String {
         value.formatted(.number.precision(.fractionLength(fractionDigits)).locale(locale))
+    }
+
+    /// The unit as it follows a number: "%" directly, anything else after a space.
+    var unitSuffix: String {
+        switch unit {
+        case "": ""
+        case "%": "%"
+        default: " \(unit)"
+        }
+    }
+
+    func formattedWithUnit(_ value: Double, locale: Locale = .current) -> String {
+        formatted(value, locale: locale) + unitSuffix
     }
 
     init?(column: String) {

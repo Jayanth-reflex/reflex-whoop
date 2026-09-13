@@ -5,6 +5,9 @@ struct ReflexWhoopApp: App {
     @State private var container: AppContainer
 
     init() {
+        // Before any navigation bar exists, so every bar picks up the serif titles.
+        MainActor.assumeIsolated { NavigationBarStyle.apply() }
+
         // AppContainer opens/migrates the database on construction. If this throws,
         // there is nothing sensible to show the user — better to crash loudly during
         // development than to silently run against a half-initialized store.
@@ -28,6 +31,8 @@ struct ReflexWhoopApp: App {
             RootView()
                 .environment(container)
                 .preferredColorScheme(.dark)
+                .foregroundStyle(Color.ivory)
+                .labeledContentStyle(.secondaryValue)
                 .task { await container.refreshSignInState() }
         }
     }

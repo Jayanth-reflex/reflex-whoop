@@ -10,8 +10,10 @@ struct TodaySnapshot {
     let anomalies: [AnomalyRow]
     let lastSyncedAt: Date?
 
-    var hasIllnessFlag: Bool {
-        anomalies.contains { $0.kind == AnomalyEngine.Kind.illnessFlag.rawValue }
+    /// Set when several overnight signals moved together the way they often
+    /// do before feeling ill.
+    var illnessFlag: AnomalyRow? {
+        anomalies.first { $0.kind == AnomalyEngine.Kind.illnessFlag.rawValue }
     }
 
     func value(of metric: Metric) -> Double? {

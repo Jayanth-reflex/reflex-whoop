@@ -33,8 +33,20 @@ final class BandTests: XCTestCase {
     /// The verdict must not lean on sleep debt: the stored value is WHOOP's
     /// capped extra-need term, not debt owed.
     func testVerdictNeverMentionsSleepDebt() {
-        for band in [RecoveryBand.low, .moderate, .high] {
-            XCTAssertFalse(band.verdict.localizedStandardContains("debt"))
+        for band in RecoveryBand.allCases {
+            XCTAssertFalse(band.verdict(illnessFlagged: false).localizedStandardContains("debt"))
+            XCTAssertFalse(band.verdict(illnessFlagged: true).localizedStandardContains("debt"))
         }
+    }
+
+    /// A good score doesn't outweigh several signals moving the way they do
+    /// before illness, so a flagged day never advises training hard.
+    func testFlaggedDayNeverAdvisesTraining() {
+        for band in RecoveryBand.allCases {
+            let verdict = band.verdict(illnessFlagged: true)
+            XCTAssertFalse(verdict.localizedStandardContains("train"), "\(band): \(verdict)")
+            XCTAssertTrue(verdict.localizedStandardContains("easy"), "\(band): \(verdict)")
+        }
+        XCTAssertTrue(RecoveryBand.high.verdict(illnessFlagged: false).localizedStandardContains("train hard"))
     }
 }
