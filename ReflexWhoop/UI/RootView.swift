@@ -18,7 +18,7 @@ struct RootView: View {
                 BandView()
             }
             Tab("Archive", systemImage: "archivebox", value: AppTab.archive) {
-                DataView()
+                ArchiveView(selection: $selection)
             }
         }
         .tint(Color.accent)

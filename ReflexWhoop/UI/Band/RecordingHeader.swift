@@ -11,6 +11,7 @@ struct RecordingHeader: View {
                 .foregroundStyle(.secondary)
             Text(timeSpan)
                 .font(.display(.title))
+                .fixedSize(horizontal: false, vertical: true)
             Text("\(RecordingFormat.length(of: recording)) · \(recording.readingCount.formatted()) readings")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)

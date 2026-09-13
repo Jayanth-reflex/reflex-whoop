@@ -34,9 +34,19 @@ enum Exporter {
         "session_metrics", "ble_sessions",
     ]
 
+    /// Local time, sortable, and free of colons (Finder shows them as slashes):
+    /// "2026-09-14 at 01.23.31".
+    static func folderName(for date: Date, timeZone: TimeZone = .current) -> String {
+        let style = Date.VerbatimFormatStyle(
+            format: "\(year: .defaultDigits)-\(month: .twoDigits)-\(day: .twoDigits) at \(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)).\(minute: .twoDigits).\(second: .twoDigits)",
+            timeZone: timeZone,
+            calendar: Calendar(identifier: .gregorian)
+        )
+        return date.formatted(style)
+    }
+
     static func export(dbPool: DatabasePool, exportsRoot: URL) async throws -> Result {
-        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-        let directory = exportsRoot.appendingPathComponent(stamp, isDirectory: true)
+        let directory = exportsRoot.appendingPathComponent(folderName(for: .now), isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         var rowCounts: [String: Int] = [:]

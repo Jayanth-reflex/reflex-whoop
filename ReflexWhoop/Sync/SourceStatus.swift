@@ -23,38 +23,13 @@ enum SourceState: Equatable {
     /// Transient: network down, WHOOP down, rate limit exhausted.
     case unreachable(reason: String)
 
-    /// True when this source can still contribute new data. Drives whether the
-    /// UI offers "sync now" or explains the archive.
+    /// True when this source can still contribute new data.
     var canCollect: Bool {
         switch self {
         case .active, .unreachable: true
         case .notConfigured, .unauthorized, .inactive: false
         }
     }
-
-    var label: String {
-        switch self {
-        case .active: "Active"
-        case .notConfigured: "Not set up"
-        case .unauthorized: "Signed out"
-        case .inactive: "Inactive"
-        case .unreachable: "Unreachable"
-        }
-    }
-
-    var detail: String? {
-        switch self {
-        case .active(let lastSuccess):
-            guard let lastSuccess else { return "No successful sync yet" }
-            return "Last synced \(Self.relative.localizedString(for: lastSuccess, relativeTo: Date()))"
-        case .notConfigured: return "Add WHOOP API credentials in Settings to collect new data."
-        case .unauthorized: return "Sign in to resume collecting. Your archive is unaffected."
-        case .inactive(let reason): return reason
-        case .unreachable(let reason): return reason
-        }
-    }
-
-    private static let relative = RelativeDateTimeFormatter()
 }
 
 /// How much history the local archive holds, independent of whether any source

@@ -8,6 +8,7 @@ struct PatternsHeadline: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(summary.headline)
                 .font(.display(.title))
+                .fixedSize(horizontal: false, vertical: true)
             Text(detail)
         }
         .padding(.vertical, 4)

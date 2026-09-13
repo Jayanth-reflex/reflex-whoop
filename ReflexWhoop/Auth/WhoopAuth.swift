@@ -21,7 +21,7 @@ actor WhoopAuth {
 
         var errorDescription: String? {
             switch self {
-            case .missingCredentials: "No WHOOP client ID/secret saved. Enter them in Settings first."
+            case .missingCredentials: "No WHOOP client ID or secret saved yet. Add them in Archive › WHOOP account."
             case .stateMismatch: "OAuth state mismatch — possible tampering, login aborted."
             case .missingCode(let url): "No authorization code in callback: \(url.absoluteString)"
             case .tokenExchangeFailed(let status, let body): "Token exchange failed (\(status)): \(body)"
@@ -221,7 +221,9 @@ private final class AuthSessionRunner: NSObject, ASWebAuthenticationPresentation
         try await withCheckedThrowingContinuation { continuation in
             let session = ASWebAuthenticationSession(url: url, callbackURLScheme: callbackScheme) { callbackURL, error in
                 if let error {
-                    continuation.resume(throwing: error)
+                    // Closing the sign-in sheet is a choice, not a failure.
+                    let canceled = (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin
+                    continuation.resume(throwing: canceled ? CancellationError() : error)
                     return
                 }
                 guard let callbackURL else {
