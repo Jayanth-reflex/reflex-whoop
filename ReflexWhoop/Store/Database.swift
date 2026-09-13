@@ -7,8 +7,10 @@ import GRDB
 /// call sites can't accidentally open a second connection to the same file.
 final class Database: Sendable {
     let dbPool: DatabasePool
+    let path: String
 
     init(path: String) throws {
+        self.path = path
         var config = Configuration()
         config.foreignKeysEnabled = true
         config.prepareDatabase { db in
@@ -43,6 +45,14 @@ final class Database: Sendable {
             for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true
         )
         return documents.appendingPathComponent("reflexwhoop.sqlite").path
+    }
+
+    /// Bytes the store occupies, including its write-ahead log and shared memory file.
+    func onDiskByteCount() -> Int64 {
+        ["", "-wal", "-shm"].reduce(into: Int64(0)) { total, suffix in
+            let size = try? FileManager.default.attributesOfItem(atPath: path + suffix)[.size] as? NSNumber
+            total += size?.int64Value ?? 0
+        }
     }
 
     /// Periodic maintenance — call from a background task, not on every launch.

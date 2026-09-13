@@ -36,6 +36,19 @@ struct DailyMetricsRow: Decodable, FetchableRecord, Identifiable {
         case userCalibrating = "user_calibrating"
     }
 
+    func value(for metric: Metric) -> Double? {
+        switch metric {
+        case .recovery: recoveryScore
+        case .strain: dayStrain
+        case .sleepPerformance: sleepPerformancePercentage
+        case .heartRateVariability: hrvRmssdMilli
+        case .restingHeartRate: restingHeartRate
+        case .breathingRate: respiratoryRate
+        case .skinTemperature: skinTempCelsius
+        case .bloodOxygen: spo2Percentage
+        }
+    }
+
     /// Pulls a metric's value by its column name — lets `TrendsView`'s metric
     /// picker stay data-driven instead of a hardcoded switch per chart.
     func value(for metric: TrendMetric) -> Double? {
@@ -155,6 +168,7 @@ struct LatestSleepDetail: Decodable, FetchableRecord {
     var swsMs: Int64?
     var remMs: Int64?
     var awakeMs: Int64?
+    var performancePercentage: Double?
 
     enum CodingKeys: String, CodingKey {
         case start, end
@@ -162,9 +176,16 @@ struct LatestSleepDetail: Decodable, FetchableRecord {
         case swsMs = "total_slow_wave_sleep_time_milli"
         case remMs = "total_rem_sleep_time_milli"
         case awakeMs = "total_awake_time_milli"
+        case performancePercentage = "sleep_performance_percentage"
     }
 
     var durationHours: Double { Double(end - start) / 3600 }
+
+    /// Light + deep + REM. `nil` when WHOOP sent no stage totals.
+    var asleepMilli: Int64? {
+        guard lightMs != nil || swsMs != nil || remMs != nil else { return nil }
+        return (lightMs ?? 0) + (swsMs ?? 0) + (remMs ?? 0)
+    }
 }
 
 enum AnalysisQueries {
@@ -203,6 +224,36 @@ enum AnalysisQueries {
         return result
     }
 
+    /// Each day's normal range for one metric, keyed by day.
+    static func normalRanges(_ db: GRDB.Database, metric: Metric, sinceDay: String?) throws -> [String: NormalRange] {
+        let rows = try Row.fetchAll(
+            db,
+            sql: """
+            SELECT day, mean_val, stddev_val FROM baselines
+            WHERE metric = ? AND window_days = ? AND (? IS NULL OR day >= ?)
+            """,
+            arguments: [metric.column, NormalRange.windowDays, sinceDay, sinceDay]
+        )
+        return Dictionary(uniqueKeysWithValues: rows.compactMap { row -> (String, NormalRange)? in
+            guard let mean = row["mean_val"] as Double?, let stddev = row["stddev_val"] as Double? else { return nil }
+            return (row["day"], NormalRange(mean: mean, standardDeviation: stddev))
+        })
+    }
+
+    /// Every metric's normal range on one day.
+    static func normalRanges(_ db: GRDB.Database, day: String) throws -> [Metric: NormalRange] {
+        let rows = try Row.fetchAll(
+            db,
+            sql: "SELECT metric, mean_val, stddev_val FROM baselines WHERE day = ? AND window_days = ?",
+            arguments: [day, NormalRange.windowDays]
+        )
+        return Dictionary(uniqueKeysWithValues: rows.compactMap { row -> (Metric, NormalRange)? in
+            guard let metric = Metric(column: row["metric"]),
+                  let mean = row["mean_val"] as Double?, let stddev = row["stddev_val"] as Double? else { return nil }
+            return (metric, NormalRange(mean: mean, standardDeviation: stddev))
+        })
+    }
+
     /// Ranked for Insights: real findings (n >= 30, sorted by |rho| descending)
     /// first, then everything still building toward significance — grouping
     /// them this way in SQL means the view never has to know the ordering rule.
@@ -232,7 +283,8 @@ enum AnalysisQueries {
     static func latestSleepDetail(_ db: GRDB.Database) throws -> LatestSleepDetail? {
         try LatestSleepDetail.fetchOne(
             db, sql: """
-            SELECT s.start, s.end, st.total_light_sleep_time_milli, st.total_slow_wave_sleep_time_milli,
+            SELECT s.start, s.end, s.sleep_performance_percentage,
+                   st.total_light_sleep_time_milli, st.total_slow_wave_sleep_time_milli,
                    st.total_rem_sleep_time_milli, st.total_awake_time_milli
             FROM sleeps s LEFT JOIN sleep_stage_summary st ON st.sleep_id = s.id
             WHERE s.nap = 0

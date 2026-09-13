@@ -46,4 +46,11 @@ final class DatabaseTests: XCTestCase {
         let db = try TestSupport.makeDatabase()
         try await db.runMaintenance()
     }
+
+    func testOnDiskByteCountCoversTheStore() throws {
+        let db = try TestSupport.makeDatabase()
+        let mainFileSize = try XCTUnwrap(try FileManager.default.attributesOfItem(atPath: db.path)[.size] as? NSNumber).int64Value
+        XCTAssertGreaterThanOrEqual(db.onDiskByteCount(), mainFileSize)
+        XCTAssertGreaterThan(mainFileSize, 0)
+    }
 }
