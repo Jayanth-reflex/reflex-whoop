@@ -481,57 +481,47 @@ after BH correction.
 
 ## UI / UX
 
-Dark, WHOOP's visual language, insight-first. Five tabs.
+Black and champagne ("Onyx"), four tabs: **Today · Trends · Band · Archive**. The full
+visual system, component list and copy rules are in
+`docs/superpowers/specs/2026-09-13-onyx-redesign-design.md`; the screens were designed
+and reviewed on the design canvas before they were built.
 
 ### Principles
 
-1. **The top of Today answers one question in one sentence** — "Recovery 68%, above your
-   30-day baseline. Sleep debt is 1 h 40 m. A moderate day suits you." The ring is the
-   supporting evidence, not the message.
-2. **No number appears without its normal range.** Every chart draws your personal baseline
-   band (p25–p75 of the 60-day window) behind the line. A metric without context is noise —
-   this is the single biggest thing the WHOOP app gets right and most dashboards get wrong.
-3. **Deviation-first.** The app surfaces what's abnormal today rather than making you scan
-   twelve charts to find it.
-4. **Provenance is always one tap away.** Long-press any number → a sheet showing source
-   (API record UUID / BLE session + chunk), fetch time, decoder version, algo version,
-   confidence, and the raw JSON or bytes. This is a data-collection app; if you can't audit a
-   number you can't trust it.
-5. **Confidence is visible, never implied.** Insight cards carry a chip: rho, n, and
-   strong/moderate/weak/insufficient. Under-powered findings render greyed, not hidden —
-   seeing "not enough data yet, 12 of 30 nights" is information.
-6. **Never color-only.** Recovery is green/yellow/red *and* a number *and* a shape, because
-   red/green is exactly the confusion pair for the most common form of color blindness.
-   Dynamic Type throughout; every chart carries a VoiceOver summary of its trend.
-7. **Charts read rollups, never chunks.** Decoding happens off the main thread, on zoom only.
-   Skeleton states while loading; the UI never blocks on a decode.
+1. **The top of Today answers one question in one sentence.** Recovery, its band, and
+   what that means for the day. A day flagged for possible illness always says to keep
+   it easy.
+2. **No number appears without the person's own normal.** Range strips, recovery zones
+   and chart bands all show the 60-day baseline mean ± 1 SD; unusual means 2 SD or more,
+   the same threshold `AnomalyEngine` uses.
+3. **Missing stays missing.** A night without a reading says so; nothing is drawn as
+   zero, and chart lines break where readings stop.
+4. **Confidence is visible, never implied.** Patterns shows r and corrected p, gives a
+   direction only for moderate or strong results, and shows how many days each
+   predictor still needs.
+5. **Never colour-only.** Every coloured state also carries a word. Text follows Dynamic
+   Type, and charts carry VoiceOver descriptions.
+6. **Readiness is hidden** until its sleep-debt input is rebuilt (DECISIONS.md).
 
 ### Screens
 
-**Today** — recovery ring (color + number + label), one-sentence verdict, strain so far
-against a suggested range, last night's sleep with stage bar, ReflexWhoop readiness,
-active anomaly flags, band status strip (battery, wrist on/off, last API sync, last BLE
-session), and the cert-expiry countdown from day 5.
+**Today** — recovery hero with its verdict and zones, strain on WHOOP's 0–21 scale, last
+night's sleep with stage totals, and the overnight vitals against their normal. With no
+WHOOP scores, or after a membership ends, it shows today's heart rate from the band
+instead of presenting an old day as today.
 
-**Trends** — metric picker × range picker (30/90/365/all). Line with baseline band, weekday
-breakdown, distribution histogram. Two metrics overlay for eyeballing a relationship before
-the stats confirm it.
+**Trends** — every metric's sparkline for 30 days, 90 days, a year or all history, each
+opening to its full history. Patterns (correlations with next-morning recovery) and
+Unusual days live here.
 
-**Insights** — ranked correlation cards in plain English: *"Sleep before 23:00 → +8%
-recovery · rho 0.34 · n = 142 · moderate."* Anomaly timeline. Monthly recap. Every card
-opens to its scatter plot and its caveats.
+**Band** — live heart rate and the last 20 minutes, the Keep recording setting, past
+recordings with one-minute charts, and Signal details for decoding work.
 
-**Live** — the screen the WHOOP app has no equivalent of. Connect the band, pick channels
-(HR+RR only / +accel / everything), start a session. Real-time HR, a **beat-to-beat tachogram**,
-rolling rMSSD updating live, a raw PPG oscilloscope trace, and accel magnitude. Session
-timer, byte counter, drop counter. Stop → session summary with the derived HRV suite.
+**Archive** — what the phone holds, the WHOOP account and band sources, Export a copy,
+Rebuild heart-rate history, and what the app never does.
 
-**Data** — row counts per table, storage by channel/session/month against the soft budget,
-sync log with failures and reasons, backfill progress, BLE session list, raw record
-inspector, cross-source validation deltas, export button.
-
-**Settings** — credentials, re-auth, scopes, decoder/algo versions, capture defaults,
-soft budget, danger-zone wipe.
+**First run** — shown only to an install with no data and no account: choose sources,
+a Bluetooth primer before the system prompt, WHOOP credentials, and the first sync.
 
 ---
 

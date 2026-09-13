@@ -103,7 +103,12 @@ def query(sql: str) -> list[dict[str, Any]]:
 @mcp.tool()
 def daily_summary(start: str | None = None, end: str | None = None) -> list[dict[str, Any]]:
     """Joined recovery + sleep + strain + readiness per day. `start`/`end` are
-    inclusive ISO dates ('2026-01-01'); omit either for an open range."""
+    inclusive ISO dates ('2026-01-01'); omit either for an open range.
+
+    Caveats: `sleep_debt_milli` holds WHOOP's `need_from_sleep_debt_milli`, the
+    extra sleep need WHOOP attributes to debt, which WHOOP caps at 7,668,000 ms.
+    It is not debt owed. `readiness_score` is built on it and is hidden in the app
+    until that input is rebuilt (docs/DECISIONS.md, "Readiness hidden")."""
     conn = _connect()
     try:
         cursor = conn.execute(

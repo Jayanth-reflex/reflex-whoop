@@ -146,3 +146,63 @@ Rather than incrementally updating correlations for only what changed. A persona
 WHOOP history tops out at a few hundred days, so a full recompute is milliseconds —
 cheap enough that getting incremental-update invalidation subtly wrong isn't worth
 the risk it would introduce.
+
+## Readiness hidden until sleep debt is rebuilt
+
+Readiness appears on no screen. `ReadinessEngine` still computes it and the MCP
+server still exposes it, but the app doesn't show it, because one of its four
+inputs is wrong.
+
+WHOOP's `sleep_needed.need_from_sleep_debt_milli` is the extra sleep WHOOP attributes
+to debt, and WHOOP caps it: the raw sleep pages return exactly 7,668,000 ms (2 h 7.8 m)
+on 55 of 68 nights. `DailyMetricsBuilder` copies it into `daily_metrics.sleep_debt_milli`
+as if it were debt owed, and `ReadinessEngine.fullDebtOffsetMilli` (2 h) sits below the
+cap, so the sleep-debt component scores zero on every capped night. It is WHOOP's value
+as sent, not an ingestion bug or stale data. Measured directly (need = baseline + strain
++ nap need, against light + deep + REM), the real seven-night deficit over the same
+period is 12–21 h.
+
+Restore readiness when all of these hold:
+
+- Debt is the app's own rolling seven-night deficit, grouped by `cycle_id`.
+- It is scored on an absolute scale: 0 h scores 100, 14 h or more scores 0.
+- Nothing presents the capped WHOOP term as debt.
+- A fixture with capped nights proves the component no longer saturates.
+
+## Normal ranges use the 60-day window
+
+Every range the app draws (range strips, recovery zones, chart bands) is the 60-day
+baseline mean ± 1 SD, and "unusual" is |z| ≥ 2. Both constants are read from
+`AnomalyEngine`, so a reading can never look normal on one screen and appear in
+Unusual days on another. `ReadingStatusTests` pins the link.
+
+## A day flagged for possible illness is never a day to push
+
+`RecoveryBand.verdict(illnessFlagged:)` returns "keep today easy" whenever
+`AnomalyEngine` raised an illness flag, whatever the recovery score. A high score
+beside "Your body may be fighting something" would advise training through the very
+pattern the flag exists to catch.
+
+## Recording from the band is one setting
+
+Keep recording is the only way to record: on, `AppContainer` holds one app-lifetime
+`SpikeRecorder` that reconnects by itself and survives backgrounding; off, there is no
+recorder. The old one-off session started from the Live screen did the same thing with
+less resilience, so it was removed rather than kept as a second path. The Bluetooth
+permission prompt therefore appears when someone turns recording on, never at launch.
+
+## Stored days are formatted in UTC
+
+`RecordDAO.dayString(for:)` writes days as UTC calendar days, and
+`RecordDAO.date(forDay:)` reads them back as midnight UTC. Formatted in local time,
+that instant is still the previous evening anywhere west of UTC, so every date that
+stands for a stored day uses `Date.FormatStyle.recordedDay()`, which formats in UTC.
+Times of real events (sleep, recordings) stay in local time.
+
+## Onyx sets secondary styles explicitly
+
+The app sets ivory as the root foreground style so text reads warm rather than
+system white. That also replaces the grey SwiftUI gives section footers, labeled
+values and empty-state descriptions by default, since those are defaults rather than
+explicit styles. `SectionFooter`, `SecondaryValueLabeledContentStyle` (set once at the
+root) and the empty-state descriptions set `.secondary` explicitly to restore them.
