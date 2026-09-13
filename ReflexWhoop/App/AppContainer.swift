@@ -102,6 +102,21 @@ final class AppContainer {
         )
     }
 
+    /// Normalizes any BLE session that still has undecoded inbox rows. Called on
+    /// launch, so sessions recorded before the normalizer existed — or by a
+    /// build that crashed before finishing — heal themselves without the user
+    /// knowing a button exists. Idempotent and a no-op when nothing is pending.
+    ///
+    /// Deliberately not gated on WHOOP auth: the band is an independent source,
+    /// and making its pipeline wait on an unrelated account's sign-in state is
+    /// exactly the coupling docs/ADR-001-data-sovereignty.md argues against.
+    func normalizeBleIfNeeded() async {
+        let dbPool = database.dbPool
+        _ = try? await Task.detached(priority: .utility) {
+            try BleNormalizer.processPending(dbPool)
+        }.value
+    }
+
     /// Re-derives every BLE session's time series from the inbox bytes. Exposed
     /// as a deliberate user action (Data tab) because it rewrites every chunk.
     func replayBleNormalization() async throws -> BleNormalizer.Stats {

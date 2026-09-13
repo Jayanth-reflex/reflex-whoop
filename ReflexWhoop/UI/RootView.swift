@@ -22,7 +22,10 @@ struct RootView: View {
         // the design doc's third sync trigger alongside manual and
         // BGAppRefreshTask. Debounced internally, so this is safe to fire on
         // every activation without hammering the API.
-        .task { await container.syncIfDueOnForeground() }
+        .task {
+            await container.normalizeBleIfNeeded()
+            await container.syncIfDueOnForeground()
+        }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 Task { await container.syncIfDueOnForeground() }
