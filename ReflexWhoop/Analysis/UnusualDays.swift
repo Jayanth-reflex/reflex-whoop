@@ -4,7 +4,7 @@ import GRDB
 enum UnusualDays {
     /// Newest first.
     static func load(_ db: GRDB.Database, sinceDay: String?) throws -> [UnusualDay] {
-        let byDay = Dictionary(grouping: try AnalysisQueries.anomalies(db, sinceDay: sinceDay), by: \.day)
+        let byDay = Dictionary(grouping: try AnalysisQueries.anomalies(db, sinceDay: sinceDay, limit: nil), by: \.day)
         return try byDay.keys.sorted(by: >).compactMap { day in
             guard let date = RecordDAO.date(forDay: day), let anomalies = byDay[day] else { return nil }
             let metrics = try DailyMetricsRow.fetchOne(db, sql: "SELECT * FROM daily_metrics WHERE day = ?", arguments: [day])
@@ -19,7 +19,7 @@ enum UnusualDays {
             return UnusualDay(
                 day: day,
                 date: date,
-                isPossibleIllness: anomalies.contains { $0.kind == AnomalyEngine.Kind.illnessFlag.rawValue },
+                illnessSignals: anomalies.first { $0.kind == AnomalyEngine.Kind.illnessFlag.rawValue }?.illnessSignals,
                 readings: readings
             )
         }

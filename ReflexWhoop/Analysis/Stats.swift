@@ -164,8 +164,10 @@ enum Stats {
     /// n < 30 is called out explicitly in the design doc: below that, a
     /// correlation on one person's noisy day-to-day data is not trustworthy
     /// regardless of how large rho looks.
+    static let minimumDaysForStrength = 30
+
     static func strength(rho: Double, n: Int) -> Strength {
-        guard n >= 30 else { return .insufficient }
+        guard n >= minimumDaysForStrength else { return .insufficient }
         switch abs(rho) {
         case 0.5...: return .strong
         case 0.3..<0.5: return .moderate

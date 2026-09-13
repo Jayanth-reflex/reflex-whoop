@@ -7,10 +7,16 @@ struct MetricDetailView: View {
 
     @Environment(AppContainer.self) private var container
 
-    @State private var range = HistoryRange.thirtyDays
+    @State private var range: HistoryRange
     @State private var points: [MetricPoint] = []
     @State private var hasLoaded = false
     @State private var loadError: String?
+
+    /// Opens on `initialRange`, so a metric picked on Trends keeps its span.
+    init(metric: Metric, initialRange: HistoryRange = .thirtyDays) {
+        self.metric = metric
+        _range = State(initialValue: initialRange)
+    }
 
     var body: some View {
         List {

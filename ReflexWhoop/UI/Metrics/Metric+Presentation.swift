@@ -39,3 +39,12 @@ extension Metric {
         }
     }
 }
+
+extension Metric.Section {
+    var title: String {
+        switch self {
+        case .scores: "Scores"
+        case .overnight: "Overnight"
+        }
+    }
+}

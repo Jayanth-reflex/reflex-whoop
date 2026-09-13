@@ -15,10 +15,6 @@ struct DailyMetricsRow: Decodable, FetchableRecord, Identifiable {
     var spo2Percentage: Double?
     var dayStrain: Double?
     var sleepPerformancePercentage: Double?
-    var sleepDebtMilli: Int64?
-    var readinessScore: Double?
-    var confidence: String?
-    var userCalibrating: Bool
 
     enum CodingKeys: String, CodingKey {
         case day
@@ -30,10 +26,6 @@ struct DailyMetricsRow: Decodable, FetchableRecord, Identifiable {
         case spo2Percentage = "spo2_percentage"
         case dayStrain = "day_strain"
         case sleepPerformancePercentage = "sleep_performance_percentage"
-        case sleepDebtMilli = "sleep_debt_milli"
-        case readinessScore = "readiness_score"
-        case confidence
-        case userCalibrating = "user_calibrating"
     }
 
     func value(for metric: Metric) -> Double? {
@@ -47,83 +39,6 @@ struct DailyMetricsRow: Decodable, FetchableRecord, Identifiable {
         case .skinTemperature: skinTempCelsius
         case .bloodOxygen: spo2Percentage
         }
-    }
-
-    /// Pulls a metric's value by its column name — lets `TrendsView`'s metric
-    /// picker stay data-driven instead of a hardcoded switch per chart.
-    func value(for metric: TrendMetric) -> Double? {
-        switch metric {
-        case .recoveryScore: recoveryScore
-        case .hrvRmssdMilli: hrvRmssdMilli
-        case .restingHeartRate: restingHeartRate
-        case .respiratoryRate: respiratoryRate
-        case .skinTempCelsius: skinTempCelsius
-        case .spo2Percentage: spo2Percentage
-        case .dayStrain: dayStrain
-        case .sleepPerformancePercentage: sleepPerformancePercentage
-        case .readinessScore: readinessScore
-        }
-    }
-}
-
-enum TrendMetric: String, CaseIterable, Identifiable {
-    case recoveryScore, hrvRmssdMilli, restingHeartRate, respiratoryRate
-    case skinTempCelsius, spo2Percentage, dayStrain, sleepPerformancePercentage, readinessScore
-
-    var id: String { rawValue }
-
-    var columnName: String {
-        switch self {
-        case .recoveryScore: "recovery_score"
-        case .hrvRmssdMilli: "hrv_rmssd_milli"
-        case .restingHeartRate: "resting_heart_rate"
-        case .respiratoryRate: "respiratory_rate"
-        case .skinTempCelsius: "skin_temp_celsius"
-        case .spo2Percentage: "spo2_percentage"
-        case .dayStrain: "day_strain"
-        case .sleepPerformancePercentage: "sleep_performance_percentage"
-        case .readinessScore: "readiness_score"
-        }
-    }
-
-    var label: String {
-        switch self {
-        case .recoveryScore: "Recovery"
-        case .hrvRmssdMilli: "HRV"
-        case .restingHeartRate: "Resting HR"
-        case .respiratoryRate: "Respiratory Rate"
-        case .skinTempCelsius: "Skin Temp"
-        case .spo2Percentage: "SpO2"
-        case .dayStrain: "Strain"
-        case .sleepPerformancePercentage: "Sleep Performance"
-        case .readinessScore: "Readiness"
-        }
-    }
-
-    var unit: String {
-        switch self {
-        case .recoveryScore, .spo2Percentage, .sleepPerformancePercentage, .readinessScore: "%"
-        case .hrvRmssdMilli: "ms"
-        case .restingHeartRate: "bpm"
-        case .respiratoryRate: "rpm"
-        case .skinTempCelsius: "°C"
-        case .dayStrain: ""
-        }
-    }
-
-    /// Whether `BaselineEngine` tracks this metric — controls whether Trends can
-    /// draw a baseline band behind the line. Strain/sleep-performance/readiness
-    /// aren't baselined (design doc lists HRV/RHR/respiratory rate/skin
-    /// temp/SpO2 specifically), so those charts show the raw line only.
-    var hasBaseline: Bool { BaselineEngine.metrics.contains(columnName) }
-
-    /// Reverse lookup from a SQL column name (as stored in `anomalies.metric`)
-    /// back to the case that knows how to display it — the one place this
-    /// mapping lives, so a display label never has to be reconstructed by
-    /// string-munging a snake_case column name.
-    init?(columnName: String) {
-        guard let match = Self.allCases.first(where: { $0.columnName == columnName }) else { return nil }
-        self = match
     }
 }
 
@@ -176,7 +91,6 @@ struct LatestSleepDetail: Decodable, FetchableRecord {
     var swsMs: Int64?
     var remMs: Int64?
     var awakeMs: Int64?
-    var performancePercentage: Double?
 
     enum CodingKeys: String, CodingKey {
         case start, end
@@ -184,7 +98,6 @@ struct LatestSleepDetail: Decodable, FetchableRecord {
         case swsMs = "total_slow_wave_sleep_time_milli"
         case remMs = "total_rem_sleep_time_milli"
         case awakeMs = "total_awake_time_milli"
-        case performancePercentage = "sleep_performance_percentage"
     }
 
     var interval: Range<Date> {
@@ -215,30 +128,6 @@ enum AnalysisQueries {
             return try DailyMetricsRow.fetchAll(db, sql: "SELECT * FROM daily_metrics WHERE day >= ? ORDER BY day ASC", arguments: [sinceDay])
         }
         return try DailyMetricsRow.fetchAll(db, sql: "SELECT * FROM daily_metrics ORDER BY day ASC")
-    }
-
-    /// Baseline mean/stddev per day for one metric+window — the shaded band
-    /// behind a Trends line chart. Keyed by day so the chart can look up a
-    /// point's band without a second round-trip per point.
-    static func baselineBand(_ db: GRDB.Database, metric: String, sinceDay: String?, window: Int = 60) throws -> [String: (mean: Double, stddev: Double)] {
-        let rows: [Row]
-        if let sinceDay {
-            rows = try Row.fetchAll(
-                db, sql: "SELECT day, mean_val, stddev_val FROM baselines WHERE metric = ? AND window_days = ? AND day >= ?",
-                arguments: [metric, window, sinceDay]
-            )
-        } else {
-            rows = try Row.fetchAll(
-                db, sql: "SELECT day, mean_val, stddev_val FROM baselines WHERE metric = ? AND window_days = ?",
-                arguments: [metric, window]
-            )
-        }
-        var result: [String: (mean: Double, stddev: Double)] = [:]
-        for row in rows {
-            guard let mean = row["mean_val"] as Double?, let stddev = row["stddev_val"] as Double? else { continue }
-            result[row["day"]] = (mean, stddev)
-        }
-        return result
     }
 
     /// Each day's normal range for one metric, keyed by day.
@@ -283,14 +172,13 @@ enum AnalysisQueries {
         )
     }
 
-    static func anomalies(_ db: GRDB.Database, sinceDay: String?, limit: Int = 90) throws -> [AnomalyRow] {
-        if let sinceDay {
-            return try AnomalyRow.fetchAll(
-                db, sql: "SELECT * FROM anomalies WHERE day >= ? ORDER BY day DESC LIMIT ?",
-                arguments: [sinceDay, limit]
-            )
-        }
-        return try AnomalyRow.fetchAll(db, sql: "SELECT * FROM anomalies ORDER BY day DESC LIMIT ?", arguments: [limit])
+    /// Newest first. `limit` nil returns every row.
+    static func anomalies(_ db: GRDB.Database, sinceDay: String?, limit: Int?) throws -> [AnomalyRow] {
+        try AnomalyRow.fetchAll(
+            db,
+            sql: "SELECT * FROM anomalies WHERE (? IS NULL OR day >= ?) ORDER BY day DESC LIMIT ?",
+            arguments: [sinceDay, sinceDay, limit ?? -1]
+        )
     }
 
     static func anomalies(_ db: GRDB.Database, day: String) throws -> [AnomalyRow] {
@@ -300,7 +188,7 @@ enum AnalysisQueries {
     static func latestSleepDetail(_ db: GRDB.Database) throws -> LatestSleepDetail? {
         try LatestSleepDetail.fetchOne(
             db, sql: """
-            SELECT s.start, s.end, s.sleep_performance_percentage,
+            SELECT s.start, s.end,
                    st.total_light_sleep_time_milli, st.total_slow_wave_sleep_time_milli,
                    st.total_rem_sleep_time_milli, st.total_awake_time_milli
             FROM sleeps s LEFT JOIN sleep_stage_summary st ON st.sleep_id = s.id

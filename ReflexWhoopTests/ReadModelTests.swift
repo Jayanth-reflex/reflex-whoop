@@ -125,8 +125,8 @@ final class ReadModelTests: XCTestCase {
         XCTAssertEqual(days.map(\.day), ["2026-09-09", "2026-08-30"])
         XCTAssertEqual(days[0].readings.map(\.metric), [.heartRateVariability])
         XCTAssertEqual(days[0].readings[0].status, .unusuallyLow)
-        XCTAssertFalse(days[0].isPossibleIllness)
-        XCTAssertTrue(days[1].isPossibleIllness)
+        XCTAssertNil(days[0].illnessSignals)
+        XCTAssertNotNil(days[1].illnessSignals)
         XCTAssertTrue(days[1].readings.isEmpty)
     }
 
@@ -141,5 +141,48 @@ final class ReadModelTests: XCTestCase {
         XCTAssertTrue(try sleep(endingAt: "2026-09-13T06:40:00+05:30").isFromLastNight(calendar: calendar, now: now))
         XCTAssertTrue(try sleep(endingAt: "2026-09-12T07:00:00+05:30").isFromLastNight(calendar: calendar, now: now))
         XCTAssertFalse(try sleep(endingAt: "2026-09-11T07:00:00+05:30").isFromLastNight(calendar: calendar, now: now))
+    }
+
+    func testHistoryForSeveralMetricsMatchesOneAtATime() throws {
+        try insertDay("2026-09-10", recovery: 40, hrv: 60)
+        try insertDay("2026-09-12", recovery: 85)
+        try insertBaseline("hrv_rmssd_milli", day: "2026-09-10", mean: 64, stddev: 6)
+
+        let together = try database.dbPool.read { try MetricHistory.points($0, metrics: [.recovery, .heartRateVariability], sinceDay: nil) }
+        for metric in [Metric.recovery, .heartRateVariability] {
+            let alone = try database.dbPool.read { try MetricHistory.points($0, metric: metric, sinceDay: nil) }
+            XCTAssertEqual(together[metric], alone)
+        }
+    }
+
+    /// "All" history must list every unusual day, not the most recent few.
+    func testUnusualDaysAreNotCapped() throws {
+        for offset in 0..<120 {
+            let day = RecordDAO.dayString(for: Date(timeIntervalSince1970: 1_700_000_000 + Double(offset) * 86_400))
+            try insertAnomaly(day: day, kind: .illnessFlag, metric: nil)
+        }
+        XCTAssertEqual(try database.dbPool.read { try UnusualDays.load($0, sinceDay: nil) }.count, 120)
+    }
+
+    func testUnusualDaysCarryTheIllnessSignals() throws {
+        try insertAnomaly(
+            day: "2026-08-30",
+            kind: .illnessFlag,
+            metric: nil,
+            detail: #"{"triggeredSignals":["respiratory_rate","skin_temp_celsius","resting_heart_rate"],"zScores":{}}"#
+        )
+        let day = try XCTUnwrap(try database.dbPool.read { try UnusualDays.load($0, sinceDay: nil) }.first)
+        XCTAssertEqual(day.illnessSignals, [.breathingRate, .skinTemperature, .restingHeartRate])
+    }
+
+    /// Readiness is hidden until its sleep-debt input is rebuilt, so no read
+    /// model may carry it, even when the column has a value.
+    func testReadinessReachesNoReadModel() throws {
+        try insertDay("2026-09-12", recovery: 80)
+        try database.dbPool.write { try $0.execute(sql: "UPDATE daily_metrics SET readiness_score = 77, sleep_debt_milli = 7668000") }
+        let today = try XCTUnwrap(try database.dbPool.read(TodaySnapshot.load))
+        let fields = Mirror(reflecting: today.metrics).children.compactMap(\.label)
+        XCTAssertFalse(fields.contains { $0.localizedStandardContains("readiness") || $0.localizedStandardContains("debt") })
+        XCTAssertFalse(Metric.allCases.contains { $0.column == "readiness_score" })
     }
 }
