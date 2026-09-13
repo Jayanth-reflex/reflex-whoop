@@ -14,12 +14,19 @@ struct SettingsView: View {
     @State private var continuousCollection = CollectionSettings.continuousCollectionEnabled
 
     private func sourceRow(_ name: String, state: SourceState) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            LabeledContent(name) {
-                Text(state.label).foregroundStyle(state.canCollect ? .green : .secondary)
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text(name).foregroundStyle(Theme.text)
+                Spacer()
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(state.canCollect ? Theme.vital : Theme.muted)
+                        .frame(width: 6, height: 6)
+                    Text(state.label).foregroundStyle(Theme.muted)
+                }
             }
             if let detail = state.detail {
-                Text(detail).font(.caption).foregroundStyle(.secondary)
+                Text(detail).font(.caption).foregroundStyle(Theme.muted)
             }
         }
     }
@@ -28,75 +35,63 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 if let sources {
-                    Section("Sources") {
-                        sourceRow("WHOOP API", state: sources.whoop)
-                        sourceRow("Band (BLE)", state: sources.band)
-                    }
-                    Section("Archive") {
-                        if let first = sources.archive.firstDay, let last = sources.archive.lastDay {
-                            LabeledContent("Days", value: "\(sources.archive.dayCount)")
-                            LabeledContent("Span", value: "\(first) → \(last)")
-                        } else {
-                            Text("No daily metrics yet.").foregroundStyle(.secondary)
-                        }
-                        LabeledContent("BLE sessions", value: "\(sources.archive.bleSessionCount)")
-                        LabeledContent("BLE samples", value: "\(sources.archive.bleSampleCount)")
-                        Text("Held locally and independent of any source staying available.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                    Section("Where data comes from") {
+                        sourceRow("WHOOP account", state: sources.whoop)
+                        sourceRow("Band", state: sources.band)
                     }
                 }
 
                 Section {
-                    Toggle("Continuous collection", isOn: Binding(
+                    Toggle("Keep recording", isOn: Binding(
                         get: { continuousCollection },
                         set: { newValue in
                             continuousCollection = newValue
                             container.setContinuousCollection(newValue)
                         }
                     ))
+                    .tint(Theme.vital)
                 } header: {
                     Text("Band")
                 } footer: {
-                    Text("Holds the band connection open and keeps recording in the background, reconnecting by itself after the band goes out of range. Works with no WHOOP account and no internet — the band is a separate source. Costs battery on both the phone and the band.")
+                    Text("Stays connected and keeps saving heart rate in the background, reconnecting on its own when the band comes back in range. Needs no account and no internet. Uses more battery on the phone and the band.")
                 }
 
-                Section("WHOOP Account") {
+                Section("WHOOP account") {
                     if container.isSignedIn {
                         Label("Connected", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
+                            .foregroundStyle(Theme.vital)
                         Button("Sync now") { Task { await syncNow() } }
                             .disabled(isWorking)
                         Button("Sign out", role: .destructive) { Task { await signOut() } }
                             .disabled(isWorking)
                     } else if hasSavedCredentials {
-                        Label("Credentials saved — not connected", systemImage: "circle")
-                            .foregroundStyle(.secondary)
-                        Button("Connect to WHOOP") { Task { await signIn() } }
+                        Text("Saved, but not connected")
+                            .foregroundStyle(Theme.muted)
+                        Button("Connect") { Task { await signIn() } }
                             .disabled(isWorking)
                     } else {
-                        Text("Enter your WHOOP developer app credentials to connect.")
+                        Text("Paste the client ID and secret from your WHOOP developer app.")
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.muted)
                         SecureField("Client ID", text: $clientID)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                         SecureField("Client Secret", text: $clientSecret)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
-                        Button("Save credentials") { saveCredentials() }
+                        Button("Save") { saveCredentials() }
                             .disabled(clientID.isEmpty || clientSecret.isEmpty)
                     }
 
                     if let statusMessage {
                         Text(statusMessage)
                             .font(.footnote)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Theme.alert)
                     }
                     if let lastSyncSummary {
                         Text(lastSyncSummary)
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.muted)
                     }
                 }
 
@@ -111,7 +106,11 @@ struct SettingsView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Theme.ink)
             .navigationTitle("Settings")
+            .toolbarBackground(Theme.ink, for: .navigationBar)
+            .tint(Theme.vital)
             .task {
                 checkSavedCredentials()
                 sources = await container.sourceSnapshot()

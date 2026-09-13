@@ -1,178 +1,248 @@
 import SwiftUI
 
-/// Phase 4: connect to the band over BLE and run the Gen 5 discovery spike
-/// (docs/design.md, "Gen 5 discovery spike") — connect, send the safe
-/// read-only command sequence, and log every raw frame for offline analysis.
-/// This screen is intentionally low-level (raw counters, not decoded metrics)
-/// because nothing is decoded yet: that's the point of the spike.
+/// Recording live from the band.
+///
+/// Two audiences, one screen, in priority order: what a person wants while
+/// wearing the band (is it connected, what's my heart rate, is it recording),
+/// and — folded away underneath — the protocol diagnostics that are only
+/// meaningful while the Gen 5 decoding work is still in progress.
 struct LiveView: View {
     @Environment(AppContainer.self) private var container
-    @State private var recorder: SpikeRecorder?
+    @State private var ownRecorder: SpikeRecorder?
+    @State private var showDiagnostics = false
+
+    /// Continuous collection owns a recorder for the app's lifetime; this
+    /// screen observes it rather than starting a competing session, since two
+    /// centrals fighting over one peripheral does not work.
+    private var recorder: SpikeRecorder? { container.continuousRecorder ?? ownRecorder }
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    Label(
-                        "Read-only session. This app never requests historical data from the band and cannot modify it — see the BLE safety rails in Settings.",
-                        systemImage: "checkmark.shield"
-                    )
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+            ZStack {
+                Theme.ink.ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Theme.gutter) {
+                        if let recorder {
+                            heartRate(recorder)
+                            status(recorder)
+                            diagnostics(recorder)
+                        } else {
+                            idle
+                        }
+                        controls
+                    }
+                    .padding(Theme.gutter)
                 }
+            }
+            .navigationTitle("Live")
+            .toolbarBackground(Theme.ink, for: .navigationBar)
+        }
+    }
 
-                if let recorder = activeRecorder {
-                    if container.continuousRecorder != nil {
-                        Label("Continuous collection is on — this session runs in the background and resumes by itself after a disconnect.", systemImage: "infinity")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+    // MARK: - Idle
+
+    private var idle: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Image(systemName: "antenna.radiowaves.left.and.right")
+                .font(.system(size: 34, weight: .light))
+                .foregroundStyle(Theme.vital)
+            Text("Record from the band")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Theme.text)
+            Text("Connects straight to the band over Bluetooth and saves heart rate as it comes in. Works with no internet and no WHOOP account.")
+                .font(.subheadline)
+                .foregroundStyle(Theme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            Label("Only reads from the band. It can't change anything on it.", systemImage: "lock.shield")
+                .font(.caption)
+                .foregroundStyle(Theme.muted)
+        }
+        .padding(.vertical, 8)
+    }
+
+    // MARK: - Heart rate hero
+
+    private func heartRate(_ recorder: SpikeRecorder) -> some View {
+        Card {
+            VStack(alignment: .leading, spacing: 6) {
+                Eyebrow("Heart rate", tint: recorder.lastHeartRateBpm == nil ? Theme.muted : Theme.vital)
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text(recorder.lastHeartRateBpm.map { "\($0)" } ?? "—")
+                        .font(Theme.readout(56))
+                        .foregroundStyle(recorder.lastHeartRateBpm == nil ? Theme.muted : Theme.text)
+                    Text("bpm")
+                        .font(.system(size: 17, weight: .medium, design: .rounded))
+                        .foregroundStyle(Theme.muted)
+                }
+                Text(recorder.lastHeartRateBpm == nil
+                     ? "Waiting for the first reading."
+                     : "Live from the band. Not yet checked against WHOOP's own number.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.muted)
+            }
+        }
+    }
+
+    // MARK: - Status
+
+    private func status(_ recorder: SpikeRecorder) -> some View {
+        Card {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Eyebrow("Connection")
+                    Spacer()
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(recorder.connectionState == .ready ? Theme.vital : Theme.caution)
+                            .frame(width: 6, height: 6)
+                        Text(describe(recorder.connectionState))
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.text)
                     }
-                    statusSection(recorder)
-                    if let bpm = recorder.lastHeartRateBpm {
-                        Section("Heart rate") {
-                            LabeledContent("Latest reading") {
-                                Text("\(bpm) bpm").font(.title2.monospacedDigit())
-                            }
-                            Text("Unscaled byte from the 0x28 realtime record — see docs/PROTOCOL-GEN5.md. Not yet cross-checked against the official app's own reading.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            if let diff = recorder.hrCrossCheckDiffBpm {
-                                LabeledContent("R10 cross-check", value: "\(diff >= 0 ? "+" : "")\(diff) bpm vs R10 candidate")
-                            }
-                        }
-                    }
-                    if let candidate = recorder.lastR10Candidate {
-                        r10Section(candidate)
-                    }
+                }
+                Divider().overlay(Theme.stroke)
+                HStack {
+                    Text("Recorded this session")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.muted)
+                    Spacer()
+                    Text(ByteCountFormatter.string(fromByteCount: Int64(recorder.byteCount), countStyle: .file))
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(Theme.text)
+                }
+                if container.continuousRecorder != nil {
+                    Label("Keeps recording in the background and reconnects on its own.", systemImage: "infinity")
+                        .font(.caption)
+                        .foregroundStyle(Theme.muted)
+                }
+            }
+        }
+    }
+
+    // MARK: - Diagnostics
+
+    /// Everything below is about the reverse-engineering effort rather than
+    /// about the wearer, so it stays collapsed. It is kept because this app's
+    /// user is also the person decoding the protocol — but it is not what the
+    /// screen is *for*.
+    private func diagnostics(_ recorder: SpikeRecorder) -> some View {
+        Card {
+            DisclosureGroup(isExpanded: $showDiagnostics) {
+                VStack(alignment: .leading, spacing: 16) {
+                    channelActivity(recorder)
                     if !recorder.deviceMetadataStrings.isEmpty {
-                        Section("Device metadata (fd4b0007)") {
-                            ForEach(recorder.deviceMetadataStrings, id: \.self) { Text($0).font(.system(.footnote, design: .monospaced)) }
-                            Text("One-time CBOR strings sent per connection — see docs/PROTOCOL-GEN5.md.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Eyebrow("Band reports")
+                            ForEach(recorder.deviceMetadataStrings, id: \.self) {
+                                Text($0)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(Theme.text)
+                            }
                         }
                     }
-                    channelActivitySection(recorder)
-                    countersSection(recorder)
+                    frameStats(recorder)
                     if !recorder.commandResults.isEmpty {
-                        Section("Startup commands") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Eyebrow("Startup commands")
                             ForEach(recorder.commandResults, id: \.opcode) { result in
                                 HStack {
                                     Text(result.opcode)
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundStyle(Theme.muted)
                                     Spacer()
-                                    Image(systemName: result.succeeded ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                        .foregroundStyle(result.succeeded ? .green : .red)
+                                    Image(systemName: result.succeeded ? "checkmark" : "xmark")
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(result.succeeded ? Theme.vital : Theme.alert)
                                 }
                             }
                         }
                     }
-                    if let inner = recorder.lastHelloInner {
-                        Section("HELLO response (envelope confirmed)") {
-                            Text(inner.map { String(format: "%02X", $0) }.joined(separator: " "))
-                                .font(.system(.footnote, design: .monospaced))
-                                .textSelection(.enabled)
-                        }
-                    }
                 }
-
-                Section {
-                    if container.continuousRecorder != nil {
-                        Text("Managed by continuous collection — turn it off in Settings to control sessions here.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    } else if recorder == nil {
-                        Button("Start discovery spike") { start() }
-                    } else {
-                        Button("Stop session", role: .destructive) { stop() }
-                    }
-                }
+                .padding(.top, 12)
+            } label: {
+                Eyebrow("Signal details")
             }
-            .navigationTitle("Live")
+            .tint(Theme.muted)
         }
     }
 
-    private func r10Section(_ candidate: R10Decoder.Sample) -> some View {
-        Section {
-            Label("Unconfirmed — Gen 4 hypothesis, never validated on Gen 5. See docs/design.md.", systemImage: "exclamationmark.triangle")
-                .font(.caption)
-                .foregroundStyle(.orange)
-            LabeledContent("Candidate HR") { Text("\(candidate.candidateHrBpm) bpm") }
-            LabeledContent("Accel magnitude") { Text(String(format: "%.2f g", candidate.accelMagnitudeG)) }
-            if !candidate.rrIntervalsMs.isEmpty {
-                LabeledContent("RR intervals", value: candidate.rrIntervalsMs.map { "\($0)ms" }.joined(separator: ", "))
-            }
-            LabeledContent("Plausible") { Text(candidate.isPlausible ? "Yes" : "No").foregroundStyle(candidate.isPlausible ? .green : .red) }
-        } header: {
-            Text("R10 candidate (0x2B)")
-        }
-    }
-
-    private func channelActivitySection(_ recorder: SpikeRecorder) -> some View {
+    private func channelActivity(_ recorder: SpikeRecorder) -> some View {
         let entries = recorder.packetTypeCounts.sortedByCount
-        return Group {
-            if !entries.isEmpty {
-                Section("Channel activity") {
-                    ForEach(entries, id: \.packetType) { entry in
-                        LabeledContent(PacketTypeCounts.label(for: entry.packetType), value: "\(entry.count)")
+        return VStack(alignment: .leading, spacing: 6) {
+            Eyebrow("Channels seen")
+            if entries.isEmpty {
+                Text("Nothing yet.").font(.caption).foregroundStyle(Theme.muted)
+            } else {
+                ForEach(entries, id: \.packetType) { entry in
+                    HStack {
+                        Text(PacketTypeCounts.label(for: entry.packetType))
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(Theme.muted)
+                        Spacer()
+                        Text("\(entry.count)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(Theme.text)
                     }
-                    Text("Frame counts by inner packet_type — shows whether IMU/R10/optical channels are producing anything, independent of whether we can decode them yet.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
+                Text("Which kinds of data the band is sending. Only heart rate is decoded so far; the rest is saved raw for later.")
+                    .font(.caption2)
+                    .foregroundStyle(Theme.muted)
             }
         }
     }
 
-    private func statusSection(_ recorder: SpikeRecorder) -> some View {
-        Section("Connection") {
-            LabeledContent("State", value: describe(recorder.connectionState))
+    private func frameStats(_ recorder: SpikeRecorder) -> some View {
+        HStack(spacing: 24) {
+            Readout(label: "Received", value: "\(recorder.frameCount)", size: 18)
+            Readout(label: "Usable", value: "\(recorder.validCrcFrameCount)", size: 18)
+            if let diff = recorder.hrCrossCheckDiffBpm {
+                Readout(label: "HR delta", value: "\(diff > 0 ? "+" : "")\(diff)", unit: "bpm", size: 18)
+            }
         }
     }
 
-    private func countersSection(_ recorder: SpikeRecorder) -> some View {
-        Section("This session") {
-            LabeledContent("Raw frames logged", value: "\(recorder.frameCount)")
-            LabeledContent("Bytes logged", value: "\(recorder.byteCount)")
-            LabeledContent("Reassembled candidates", value: "\(recorder.reassembledFrameCount)")
-            LabeledContent("CRC-valid frames", value: "\(recorder.validCrcFrameCount)")
+    // MARK: - Controls
+
+    @ViewBuilder
+    private var controls: some View {
+        if container.continuousRecorder != nil {
+            Text("Continuous recording is on. Turn it off in Settings to control sessions here.")
+                .font(.caption)
+                .foregroundStyle(Theme.muted)
+        } else if ownRecorder == nil {
+            Button {
+                let recorder = container.makeSpikeRecorder()
+                ownRecorder = recorder
+                try? recorder.startSession()
+            } label: {
+                Text("Start recording").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.vital)
+            .foregroundStyle(Theme.ink)
+            .controlSize(.large)
+        } else {
+            Button(role: .destructive) {
+                ownRecorder?.stopSession()
+                ownRecorder = nil
+            } label: {
+                Text("Stop recording").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(Theme.alert)
+            .controlSize(.large)
         }
     }
 
     private func describe(_ state: BandConnection.ConnectionState) -> String {
         switch state {
-        case .idle: return "Idle"
-        case .unavailable(let reason): return reason
-        case .scanning: return "Scanning…"
-        case .connecting: return "Connecting…"
-        case .discoveringServices: return "Discovering services…"
-        case .subscribing: return "Subscribing…"
-        case .ready: return "Connected"
-        case .disconnected(let reason): return "Disconnected (\(reason))"
+        case .idle: "Not connected"
+        case .unavailable(let reason): reason
+        case .scanning: "Looking for your band"
+        case .connecting: "Connecting"
+        case .discoveringServices, .subscribing: "Setting up"
+        case .ready: "Connected"
+        case .disconnected: "Reconnecting"
         }
     }
-
-    private func start() {
-        // The command sequence now fires from `BandConnection.onReady`, so it
-        // re-arms on every reconnect instead of only the first connection.
-        let newRecorder = container.makeSpikeRecorder()
-        recorder = newRecorder
-        try? newRecorder.startSession()
-    }
-
-    private func stop() {
-        recorder?.stopSession()
-        recorder = nil
-    }
-
-    /// Continuous collection owns a recorder for the app's lifetime; this
-    /// screen observes it rather than starting a competing session, since two
-    /// `CBCentralManager`s fighting over one peripheral is not a thing that
-    /// works.
-    private var activeRecorder: SpikeRecorder? {
-        container.continuousRecorder ?? recorder
-    }
-}
-
-#Preview {
-    LiveView()
 }

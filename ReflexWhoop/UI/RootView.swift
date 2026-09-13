@@ -11,13 +11,14 @@ struct RootView: View {
             TrendsView()
                 .tabItem { Label("Trends", systemImage: "chart.xyaxis.line") }
             InsightsView()
-                .tabItem { Label("Insights", systemImage: "sparkles") }
+                .tabItem { Label("Patterns", systemImage: "sparkles") }
             LiveView()
                 .tabItem { Label("Live", systemImage: "waveform.path.ecg") }
             DataView()
-                .tabItem { Label("Data", systemImage: "cylinder.split.1x2") }
+                .tabItem { Label("Data", systemImage: "internaldrive") }
         }
-        .tint(.green)
+        .tint(Theme.vital)
+        .toolbarBackground(Theme.ink, for: .tabBar)
         // Covers both a cold launch and a background→foreground transition —
         // the design doc's third sync trigger alongside manual and
         // BGAppRefreshTask. Debounced internally, so this is safe to fire on

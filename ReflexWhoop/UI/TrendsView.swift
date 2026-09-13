@@ -29,21 +29,35 @@ struct TrendsView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
+            ZStack {
+                Theme.ink.ignoresSafeArea()
                 if rows.isEmpty && !isLoading {
-                    ContentUnavailableView("No data yet", systemImage: "chart.xyaxis.line")
+                    VStack(spacing: 8) {
+                        Text("Nothing to chart yet")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(Theme.text)
+                        Text("Trends appear once a few days have synced.")
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.muted)
+                    }
                 } else {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 20) {
+                        VStack(alignment: .leading, spacing: Theme.gutter) {
                             picker
-                            chart
+                            Card {
+                                VStack(alignment: .leading, spacing: 14) {
+                                    headline
+                                    chart
+                                }
+                            }
                             weekdayBreakdown
                         }
-                        .padding()
+                        .padding(Theme.gutter)
                     }
                 }
             }
             .navigationTitle("Trends")
+            .toolbarBackground(Theme.ink, for: .navigationBar)
         }
         .task(id: Pair(metric, range)) { await load() }
     }
@@ -54,12 +68,45 @@ struct TrendsView: View {
                 ForEach(TrendMetric.allCases) { m in Text(m.label).tag(m) }
             }
             .pickerStyle(.menu)
+            .tint(Theme.vital)
 
             Picker("Range", selection: $range) {
                 ForEach(RangeOption.allCases) { r in Text(r.rawValue).tag(r) }
             }
             .pickerStyle(.segmented)
         }
+    }
+
+    /// The current value stated plainly above the chart, with how it compares
+    /// to this person's own normal. A line alone tells you the shape; this
+    /// tells you the answer.
+    @ViewBuilder
+    private var headline: some View {
+        let latest = rows.last(where: { $0.value(for: metric) != nil })
+        let value = latest?.value(for: metric)
+        HStack(alignment: .top) {
+            Readout(
+                label: metric.label,
+                value: value.map { formatted($0) },
+                unit: metric.unit.isEmpty ? nil : metric.unit,
+                note: comparisonNote(latest),
+                size: 30
+            )
+            Spacer()
+        }
+    }
+
+    private func formatted(_ value: Double) -> String {
+        value >= 100 || value.rounded() == value ? "\(Int(value))" : String(format: "%.1f", value)
+    }
+
+    private func comparisonNote(_ row: DailyMetricsRow?) -> String? {
+        guard metric.hasBaseline, let row, let value = row.value(for: metric), let b = band[row.day], b.stddev > 0 else {
+            return nil
+        }
+        let z = (value - b.mean) / b.stddev
+        if abs(z) < 0.5 { return "Right around your normal" }
+        return z > 0 ? "Above your normal" : "Below your normal"
     }
 
     @ViewBuilder
@@ -70,8 +117,10 @@ struct TrendsView: View {
         }
 
         if points.isEmpty {
-            ContentUnavailableView("No \(metric.label.lowercased()) data in this range", systemImage: "chart.xyaxis.line")
-                .frame(height: 220)
+            Text("No \(metric.label.lowercased()) in this range")
+                .font(.subheadline)
+                .foregroundStyle(Theme.muted)
+                .frame(height: 200)
         } else {
             Chart {
                 if metric.hasBaseline {
@@ -79,22 +128,44 @@ struct TrendsView: View {
                         if let b = band[row.day], let date = Self.dayFormatter.date(from: row.day) {
                             AreaMark(
                                 x: .value("Day", date),
-                                yStart: .value("Baseline low", b.mean - b.stddev),
-                                yEnd: .value("Baseline high", b.mean + b.stddev)
+                                yStart: .value("Normal low", b.mean - b.stddev),
+                                yEnd: .value("Normal high", b.mean + b.stddev)
                             )
-                            .foregroundStyle(.gray.opacity(0.15))
+                            .foregroundStyle(Theme.muted.opacity(0.18))
                         }
                     }
                 }
                 ForEach(points, id: \.0) { date, value in
                     LineMark(x: .value("Day", date), y: .value(metric.label, value))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(Theme.vital)
+                        .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
                         .interpolationMethod(.monotone)
                 }
             }
-            .frame(height: 220)
+            .chartXAxis {
+                AxisMarks { _ in
+                    AxisGridLine().foregroundStyle(Theme.stroke)
+                    AxisValueLabel().foregroundStyle(Theme.muted)
+                }
+            }
+            .chartYAxis {
+                AxisMarks { _ in
+                    AxisGridLine().foregroundStyle(Theme.stroke)
+                    AxisValueLabel().foregroundStyle(Theme.muted)
+                }
+            }
+            .frame(height: 200)
             .accessibilityLabel("\(metric.label) over \(range.rawValue)")
             .accessibilityValue(trendSummary(points))
+
+            if metric.hasBaseline {
+                HStack(spacing: 6) {
+                    Rectangle().fill(Theme.muted.opacity(0.3)).frame(width: 14, height: 8).clipShape(RoundedRectangle(cornerRadius: 2))
+                    Text("Shaded band is your own normal range")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.muted)
+                }
+            }
         }
     }
 
@@ -114,13 +185,25 @@ struct TrendsView: View {
     private var weekdayBreakdown: some View {
         let byWeekday = weekdayAverages()
         if !byWeekday.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("By day of week").font(.headline)
-                Chart(byWeekday, id: \.weekday) { entry in
-                    BarMark(x: .value("Day", entry.label), y: .value(metric.label, entry.average))
-                        .foregroundStyle(.green.opacity(0.7))
+            Card {
+                VStack(alignment: .leading, spacing: 12) {
+                    Eyebrow("By day of week")
+                    Chart(byWeekday, id: \.weekday) { entry in
+                        BarMark(x: .value("Day", entry.label), y: .value(metric.label, entry.average))
+                            .foregroundStyle(Theme.vital.opacity(0.65))
+                            .cornerRadius(3)
+                    }
+                    .chartXAxis {
+                        AxisMarks { _ in AxisValueLabel().foregroundStyle(Theme.muted) }
+                    }
+                    .chartYAxis {
+                        AxisMarks { _ in
+                            AxisGridLine().foregroundStyle(Theme.stroke)
+                            AxisValueLabel().foregroundStyle(Theme.muted)
+                        }
+                    }
+                    .frame(height: 130)
                 }
-                .frame(height: 140)
             }
         }
     }

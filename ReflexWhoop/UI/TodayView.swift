@@ -1,10 +1,10 @@
 import SwiftUI
 import GRDB
 
-/// Per the design doc's UI principles: one sentence at the top answers "what
-/// should I do today," the ring is supporting evidence not the message, and
-/// every number states its own confidence rather than implying certainty it
-/// doesn't have.
+/// The one screen that answers "what should I do today." Everything here is
+/// arranged around that sentence: the verdict is the hero, the recovery ring
+/// and metric strip are evidence for it, and each number carries its own
+/// confidence rather than implying certainty it doesn't have.
 struct TodayView: View {
     @Environment(AppContainer.self) private var container
 
@@ -22,250 +22,301 @@ struct TodayView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                // Archive mode: a source that can no longer collect does not
-                // take the screen down with it. Only an empty archive gets the
-                // "nothing here" treatment — with 438 days on disk, being
-                // signed out is a banner, not a blank page.
-                // docs/ADR-001-data-sovereignty.md.
-                if !container.isSignedIn, snapshot?.sources?.archive.isEmpty ?? true {
-                    ContentUnavailableView(
-                        "Not connected yet",
-                        systemImage: "bolt.horizontal.circle",
-                        description: Text("Connect your WHOOP account in Settings to start collecting data.")
-                    )
-                } else if let snapshot, snapshot.metrics != nil {
-                    content(snapshot)
-                } else if isLoading {
-                    ProgressView()
-                } else {
-                    ContentUnavailableView(
-                        "No data yet",
-                        systemImage: "arrow.triangle.2.circlepath",
-                        description: Text("Pull to sync, or check Settings if this doesn't clear up.")
-                    )
-                }
+            ZStack {
+                Theme.ink.ignoresSafeArea()
+                content
             }
             .navigationTitle("Today")
+            .toolbarBackground(Theme.ink, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showingSettings = true } label: { Image(systemName: "gearshape") }
+                    Button { showingSettings = true } label: {
+                        Image(systemName: "slider.horizontal.3")
+                    }
+                    .tint(Theme.muted)
                 }
             }
-            .sheet(isPresented: $showingSettings) {
-                SettingsView()
-            }
+            .sheet(isPresented: $showingSettings) { SettingsView() }
             .refreshable { await load() }
             .task { await load() }
         }
     }
 
     @ViewBuilder
-    private func content(_ snapshot: Snapshot) -> some View {
-        let metrics = snapshot.metrics! // guarded by the caller above
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                if let sources = snapshot.sources, !sources.whoop.canCollect {
-                    archiveBanner(sources)
-                }
-
-                verdict(metrics, anomalies: snapshot.anomalies)
-
-                HStack(spacing: 16) {
-                    recoveryRing(metrics)
-                    VStack(alignment: .leading, spacing: 12) {
-                        strainRow(metrics)
-                        readinessRow(metrics)
+    private var content: some View {
+        // Being signed out is only an empty state when there is genuinely
+        // nothing to show. With history on disk it is a banner over real data.
+        if !container.isSignedIn, snapshot?.sources?.archive.isEmpty ?? true {
+            emptyState
+        } else if let snapshot, let metrics = snapshot.metrics {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.gutter) {
+                    if let sources = snapshot.sources, !sources.whoop.canCollect {
+                        archiveBanner(sources)
                     }
+                    verdict(metrics, anomalies: snapshot.anomalies)
+                    vitals(metrics)
+                    if let sleep = snapshot.sleep {
+                        sleepCard(metrics, sleep: sleep)
+                    }
+                    if !snapshot.anomalies.isEmpty {
+                        anomalyCard(snapshot.anomalies)
+                    }
+                    statusStrip(snapshot)
                 }
-
-                if let sleep = snapshot.sleep {
-                    sleepCard(metrics, sleep: sleep)
-                }
-
-                if !snapshot.anomalies.isEmpty {
-                    anomalyCard(snapshot.anomalies)
-                }
-
-                statusStrip(snapshot)
+                .padding(Theme.gutter)
             }
-            .padding()
+        } else if isLoading {
+            ProgressView().tint(Theme.muted)
+        } else {
+            noDataState
         }
     }
 
-    // MARK: - Sections
+    // MARK: - Empty states
 
-    /// Shown when WHOOP can no longer collect. States what still works rather
-    /// than what broke: the analysis below is computed entirely from the local
-    /// archive and stays correct whether or not another byte ever arrives.
-    private func archiveBanner(_ sources: AppContainer.SourceSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("WHOOP source \(sources.whoop.label.lowercased())", systemImage: "archivebox")
-                .font(.subheadline.weight(.semibold))
-            if let detail = sources.whoop.detail {
-                Text(detail).font(.caption).foregroundStyle(.secondary)
-            }
-            if let first = sources.archive.firstDay, let last = sources.archive.lastDay {
-                Text("Archive: \(sources.archive.dayCount) days, \(first) to \(last). Everything below is computed from it.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "waveform.path.ecg")
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(Theme.vital)
+            Text("Nothing collected yet")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Theme.text)
+            Text("Connect your WHOOP account to pull your history, or record from the band on the Live tab.")
+                .font(.subheadline)
+                .foregroundStyle(Theme.muted)
+                .multilineTextAlignment(.center)
+            Button("Open settings") { showingSettings = true }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.vital)
+                .foregroundStyle(Theme.ink)
+                .padding(.top, 4)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+        .padding(40)
     }
 
+    private var noDataState: some View {
+        VStack(spacing: 10) {
+            Text("No scores for today yet")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Theme.text)
+            Text("Pull down to sync.")
+                .font(.subheadline)
+                .foregroundStyle(Theme.muted)
+        }
+        .padding(40)
+    }
+
+    // MARK: - Hero
+
+    /// The signature element: the day's answer, set large, with a rule in the
+    /// recovery band's own color. The color is never the only carrier — the
+    /// sentence says the same thing in words.
     private func verdict(_ m: DailyMetricsRow, anomalies: [AnomalyRow]) -> some View {
-        Text(verdictText(m, anomalies: anomalies))
-            .font(.title3.weight(.semibold))
-            .fixedSize(horizontal: false, vertical: true)
+        let band = m.recoveryScore?.recoveryBand
+        return VStack(alignment: .leading, spacing: 12) {
+            Eyebrow("The read", tint: band?.color ?? Theme.muted)
+            Text(verdictText(m, anomalies: anomalies))
+                .font(.system(size: 27, weight: .semibold, design: .rounded))
+                .foregroundStyle(Theme.text)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(2)
+            Rectangle()
+                .fill(band?.color ?? Theme.stroke)
+                .frame(width: 56, height: 3)
+                .clipShape(Capsule())
+        }
     }
 
     private func verdictText(_ m: DailyMetricsRow, anomalies: [AnomalyRow]) -> String {
         guard let recovery = m.recoveryScore else {
-            return "Recovery hasn't synced yet today."
+            return "Today's recovery hasn't arrived yet."
         }
-        let band = recoveryBand(recovery)
-        var sentence = "Recovery \(Int(recovery))% — \(band.label.lowercased())."
-
+        let band = recovery.recoveryBand
+        var sentence: String
+        switch band.label {
+        case "High": sentence = "You're recovered. Good day to push."
+        case "Moderate": sentence = "Middling recovery. Train, but leave something in reserve."
+        default: sentence = "Low recovery. Go easy today."
+        }
         if let debtMilli = m.sleepDebtMilli, debtMilli > 0 {
             let hours = debtMilli / 3_600_000
             let minutes = (debtMilli % 3_600_000) / 60_000
-            sentence += " Sleep debt is \(hours)h \(minutes)m."
+            sentence += hours > 0 ? " You're \(hours)h \(minutes)m down on sleep." : " You're \(minutes)m down on sleep."
         }
         if anomalies.contains(where: { $0.kind == "illness_flag" }) {
-            sentence += " Several signals are off from your normal — worth keeping an eye on."
+            sentence += " Several signals are off from your normal."
         }
         return sentence
     }
 
+    // MARK: - Vitals
+
+    private func vitals(_ m: DailyMetricsRow) -> some View {
+        Card {
+            HStack(alignment: .center, spacing: Theme.cardPadding) {
+                recoveryRing(m)
+                VStack(alignment: .leading, spacing: 18) {
+                    Readout(
+                        label: "Strain",
+                        value: m.dayStrain.map { String(format: "%.1f", $0) },
+                        note: m.dayStrain.map(strainBand),
+                        size: 24
+                    )
+                    Readout(
+                        label: "Readiness",
+                        value: m.readinessScore.map { "\(Int($0))" },
+                        note: m.readinessScore == nil ? "Not enough history" : "This app's score, not WHOOP's",
+                        size: 24
+                    )
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
     private func recoveryRing(_ m: DailyMetricsRow) -> some View {
         let recovery = m.recoveryScore
-        let band = recovery.map(recoveryBand)
+        let band = recovery?.recoveryBand
         return ZStack {
-            Circle().stroke(.quaternary, lineWidth: 10)
-            if let recovery {
+            Circle().stroke(Theme.stroke, lineWidth: 8)
+            if let recovery, let band {
                 Circle()
                     .trim(from: 0, to: recovery / 100)
-                    .stroke(band!.color, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                    .stroke(band.color, style: StrokeStyle(lineWidth: 8, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                VStack(spacing: 2) {
-                    Text("\(Int(recovery))%").font(.title.bold())
-                    Text(band!.label).font(.caption).foregroundStyle(.secondary)
+                VStack(spacing: 0) {
+                    Text("\(Int(recovery))")
+                        .font(Theme.readout(34))
+                        .foregroundStyle(Theme.text)
+                    Text(band.label)
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(0.8)
+                        .foregroundStyle(band.color)
                 }
             } else {
-                Text("—").font(.title.bold()).foregroundStyle(.secondary)
+                Text("—").font(Theme.readout(30)).foregroundStyle(Theme.muted)
             }
         }
-        .frame(width: 120, height: 120)
-        // Never color-only: label and percentage both carry the same
-        // information the ring color does, for color-blind readers.
-        .accessibilityLabel(recovery.map { "Recovery \(Int($0)) percent, \(band!.label)" } ?? "Recovery not available")
+        .frame(width: 108, height: 108)
+        // The ring's meaning never depends on color alone — the number and the
+        // band name are both present for a color-blind reader.
+        .accessibilityElement()
+        .accessibilityLabel(recovery.map { "Recovery \(Int($0)) percent, \($0.recoveryBand.label)" } ?? "Recovery unavailable")
     }
 
-    private func strainRow(_ m: DailyMetricsRow) -> some View {
-        HStack {
-            Label("Strain", systemImage: "flame")
-            Spacer()
-            if let strain = m.dayStrain {
-                Text(String(format: "%.1f", strain)).bold()
-                Text(strainBand(strain)).font(.caption).foregroundStyle(.secondary)
-            } else {
-                Text("—").foregroundStyle(.secondary)
-            }
-        }
-    }
+    // MARK: - Cards
 
-    private func readinessRow(_ m: DailyMetricsRow) -> some View {
-        HStack {
-            Label("Readiness", systemImage: "gauge.with.dots.needle.50percent")
-            Spacer()
-            if let readiness = m.readinessScore {
-                Text("\(Int(readiness))").bold()
-            } else {
-                Text("insufficient data").font(.caption).foregroundStyle(.secondary)
+    private func archiveBanner(_ sources: AppContainer.SourceSnapshot) -> some View {
+        Card {
+            VStack(alignment: .leading, spacing: 6) {
+                Eyebrow("WHOOP \(sources.whoop.label)", tint: Theme.caution)
+                if let detail = sources.whoop.detail {
+                    Text(detail).font(.footnote).foregroundStyle(Theme.text)
+                }
+                if let first = sources.archive.firstDay, let last = sources.archive.lastDay {
+                    Text("Your \(sources.archive.dayCount) days from \(first) to \(last) are stored on this phone. Everything below is computed from them.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.muted)
+                }
             }
         }
-        // Labeled every place it appears, per the design doc — this is not WHOOP's number.
-        .overlay(alignment: .bottomLeading) {
-            Text("ReflexWhoop score — not WHOOP's")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .offset(y: 16)
-        }
-        .padding(.bottom, 12)
     }
 
     private func sleepCard(_ m: DailyMetricsRow, sleep: LatestSleepDetail) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label("Last night", systemImage: "moon.stars")
-                Spacer()
-                if let perf = m.sleepPerformancePercentage {
-                    Text("\(Int(perf))%").bold()
+        Card {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    Eyebrow("Last night")
+                    Spacer()
+                    Text(String(format: "%.1fh", sleep.durationHours))
+                        .font(Theme.readout(20))
+                        .foregroundStyle(Theme.text)
+                    if let perf = m.sleepPerformancePercentage {
+                        Text("· \(Int(perf))%")
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.muted)
+                    }
                 }
+                sleepStageBar(sleep)
+                stageLegend(sleep)
             }
-            Text(String(format: "%.1fh", sleep.durationHours)).font(.caption).foregroundStyle(.secondary)
-            sleepStageBar(sleep)
         }
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func stageSegments(_ sleep: LatestSleepDetail) -> [(String, Int64, Color)] {
+        [
+            ("REM", sleep.remMs ?? 0, Theme.vital.opacity(0.85)),
+            ("Deep", sleep.swsMs ?? 0, Color(red: 0.40, green: 0.53, blue: 1.0)),
+            ("Light", sleep.lightMs ?? 0, Color(red: 0.25, green: 0.33, blue: 0.50)),
+            ("Awake", sleep.awakeMs ?? 0, Theme.caution.opacity(0.8)),
+        ]
     }
 
     private func sleepStageBar(_ sleep: LatestSleepDetail) -> some View {
-        let segments: [(String, Int64, Color)] = [
-            ("REM", sleep.remMs ?? 0, .cyan),
-            ("Deep", sleep.swsMs ?? 0, .indigo),
-            ("Light", sleep.lightMs ?? 0, .blue.opacity(0.5)),
-            ("Awake", sleep.awakeMs ?? 0, .orange),
-        ]
+        let segments = stageSegments(sleep)
         let total = max(segments.reduce(0) { $0 + $1.1 }, 1)
         return GeometryReader { geo in
-            HStack(spacing: 1) {
+            HStack(spacing: 2) {
                 ForEach(segments, id: \.0) { segment in
-                    Color(segment.2)
-                        .frame(width: geo.size.width * CGFloat(segment.1) / CGFloat(total))
+                    segment.2.frame(width: max(0, geo.size.width * CGFloat(segment.1) / CGFloat(total) - 2))
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .clipShape(Capsule())
         }
-        .frame(height: 10)
+        .frame(height: 8)
         .accessibilityElement()
-        .accessibilityLabel(sleepStageAccessibilityLabel(segments, total: total))
+        .accessibilityLabel(segments.map { "\($0.0) \(Int(Double($0.1) / Double(total) * 100)) percent" }.joined(separator: ", "))
     }
 
-    private func sleepStageAccessibilityLabel(_ segments: [(String, Int64, Color)], total: Int64) -> String {
-        segments.map { "\($0.0) \(Int(Double($0.1) / Double(total) * 100))%" }.joined(separator: ", ")
+    private func stageLegend(_ sleep: LatestSleepDetail) -> some View {
+        let segments = stageSegments(sleep)
+        let total = max(segments.reduce(0) { $0 + $1.1 }, 1)
+        return HStack(spacing: 14) {
+            ForEach(segments, id: \.0) { segment in
+                HStack(spacing: 5) {
+                    Circle().fill(segment.2).frame(width: 6, height: 6)
+                    Text(segment.0).font(.caption2).foregroundStyle(Theme.muted)
+                    Text("\(Int(Double(segment.1) / Double(total) * 100))%")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(Theme.text)
+                }
+            }
+        }
+        .accessibilityHidden(true) // the bar above already reads this out
     }
 
     private func anomalyCard(_ anomalies: [AnomalyRow]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Worth noting today", systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.yellow)
-            ForEach(anomalies) { anomaly in
-                Text(anomalyText(anomaly)).font(.subheadline)
+        Card {
+            VStack(alignment: .leading, spacing: 10) {
+                Eyebrow("Worth noting", tint: Theme.caution)
+                ForEach(anomalies) { anomaly in
+                    Text(anomalyText(anomaly))
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func anomalyText(_ anomaly: AnomalyRow) -> String {
         if anomaly.kind == "illness_flag" {
-            return "Respiratory rate, skin temp, resting HR, and HRV are moving together in the direction that usually means you're coming down with something."
+            return "Breathing rate, skin temperature, resting heart rate and HRV are all moving the way they usually do before you come down with something."
         }
         if let metric = anomaly.metric, let z = anomaly.zScore {
-            let direction = z > 0 ? "higher" : "lower"
             let label = TrendMetric(columnName: metric)?.label ?? metric
-            return "\(label) is unusually \(direction) than your normal today."
+            return "\(label) is unusually \(z > 0 ? "high" : "low") for you today."
         }
-        return "Unusual reading today."
+        return "Something is off from your normal today."
     }
 
     private func statusStrip(_ snapshot: Snapshot) -> some View {
-        HStack {
-            Image(systemName: "checkmark.icloud")
+        HStack(spacing: 6) {
+            Circle()
+                .fill(snapshot.lastSyncedAt == nil ? Theme.muted : Theme.vital)
+                .frame(width: 5, height: 5)
             if let lastSync = snapshot.lastSyncedAt {
                 Text("Synced \(lastSync.formatted(.relative(presentation: .named)))")
             } else {
@@ -273,24 +324,15 @@ struct TodayView: View {
             }
         }
         .font(.caption)
-        .foregroundStyle(.secondary)
-    }
-
-    // MARK: - Bands
-
-    private func recoveryBand(_ score: Double) -> (label: String, color: Color) {
-        switch score {
-        case 67...: ("Good recovery", .green)
-        case 34..<67: ("Adequate recovery", .yellow)
-        default: ("Low recovery", .red)
-        }
+        .foregroundStyle(Theme.muted)
+        .frame(maxWidth: .infinity)
     }
 
     private func strainBand(_ strain: Double) -> String {
         switch strain {
-        case ..<10: "Light"
-        case 10..<14: "Moderate"
-        case 14..<18: "Strenuous"
+        case ..<10: "Light day"
+        case 10..<14: "Moderate day"
+        case 14..<18: "Hard day"
         default: "All out"
         }
     }
