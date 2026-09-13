@@ -14,20 +14,10 @@ enum DailyMetricsBuilder {
     /// UTC day boundaries as epoch seconds, matching `RecordDAO.dayString`'s UTC
     /// bucketing (see its doc comment on the known simplification there).
     private static func dayBounds(_ day: String) -> (start: Int64, end: Int64)? {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        guard let date = Self.dayFormatter.date(from: day) else { return nil }
+        guard let date = RecordDAO.date(forDay: day) else { return nil }
         let start = Int64(date.timeIntervalSince1970)
         return (start, start + 86400)
     }
-
-    private static let dayFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = TimeZone(identifier: "UTC")
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return f
-    }()
 
     @discardableResult
     static func build(_ db: GRDB.Database, day: String) throws -> Bool {

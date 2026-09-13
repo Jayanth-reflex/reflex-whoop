@@ -32,6 +32,11 @@ enum RecordDAO {
         dayFormatter.string(from: date)
     }
 
+    /// Inverse of `dayString(for:)`: midnight UTC of a `yyyy-MM-dd` day.
+    static func date(forDay day: String) -> Date? {
+        dayFormatter.date(from: day)
+    }
+
     private static func markDirty(_ db: GRDB.Database, day: String, reason: String) throws {
         try db.execute(
             sql: """

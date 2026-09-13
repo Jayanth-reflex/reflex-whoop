@@ -9,14 +9,22 @@ import GRDB
 enum AnomalyEngine {
     static let algoVersion = 1
 
+    /// The `anomalies.kind` values this engine writes.
+    enum Kind: String {
+        case illnessFlag = "illness_flag"
+        case singleMetricExcursion = "single_metric_excursion"
+    }
+
     /// Per-signal threshold for the combined illness flag. Deliberately looser
     /// than the single-metric threshold below (1.5 vs 2.0 SD) — it's the
     /// *combination* of several moderately-unusual signals moving the same
     /// direction that's meaningful, not any one of them alone.
     private static let illnessSignalThreshold = 1.5
     private static let minimumIllnessSignals = 3
-    private static let singleMetricThreshold = 2.0
-    private static let baselineWindow = 60
+    /// Also what the UI calls "unusual" (`ReadingStatus`), so the two agree.
+    static let singleMetricThreshold = 2.0
+    /// Also the window every normal range on screen uses (`NormalRange`).
+    static let baselineWindow = 60
 
     private struct IllnessDetail: Encodable {
         var triggeredSignals: [String]
@@ -59,9 +67,9 @@ enum AnomalyEngine {
         try db.execute(
             sql: """
             INSERT INTO anomalies (day, kind, metric, z_score, detail_json, algo_version, computed_at)
-            VALUES (?, 'illness_flag', NULL, NULL, ?, ?, ?)
+            VALUES (?, ?, NULL, NULL, ?, ?, ?)
             """,
-            arguments: [day, detailJSON, algoVersion, Int64(Date().timeIntervalSince1970)]
+            arguments: [day, Kind.illnessFlag.rawValue, detailJSON, algoVersion, Int64(Date().timeIntervalSince1970)]
         )
     }
 
@@ -73,9 +81,9 @@ enum AnomalyEngine {
             try db.execute(
                 sql: """
                 INSERT INTO anomalies (day, kind, metric, z_score, detail_json, algo_version, computed_at)
-                VALUES (?, 'single_metric_excursion', ?, ?, NULL, ?, ?)
+                VALUES (?, ?, ?, ?, NULL, ?, ?)
                 """,
-                arguments: [day, metric, z, algoVersion, Int64(Date().timeIntervalSince1970)]
+                arguments: [day, Kind.singleMetricExcursion.rawValue, metric, z, algoVersion, Int64(Date().timeIntervalSince1970)]
             )
         }
     }

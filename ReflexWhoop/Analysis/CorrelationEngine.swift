@@ -16,14 +16,6 @@ enum CorrelationEngine {
     static let outcome = "next_day_recovery"
     static let lagDays = 1
 
-    private static let dayFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = TimeZone(identifier: "UTC")
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return f
-    }()
-
     private struct SleepInfo {
         var id: String
         var durationMs: Double
@@ -177,7 +169,7 @@ enum CorrelationEngine {
     }
 
     private static func addOneDay(_ day: String) -> String? {
-        guard let date = dayFormatter.date(from: day) else { return nil }
-        return dayFormatter.string(from: date.addingTimeInterval(86400))
+        guard let date = RecordDAO.date(forDay: day) else { return nil }
+        return RecordDAO.dayString(for: date.addingTimeInterval(86400))
     }
 }

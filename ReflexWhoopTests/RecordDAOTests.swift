@@ -126,4 +126,10 @@ final class RecordDAOTests: XCTestCase {
             XCTAssertEqual(marked, 1)
         }
     }
+
+    func testDayStringRoundTripsThroughDate() throws {
+        let date = try XCTUnwrap(RecordDAO.date(forDay: "2026-09-12"))
+        XCTAssertEqual(RecordDAO.dayString(for: date), "2026-09-12")
+        XCTAssertNil(RecordDAO.date(forDay: "12/09/2026"))
+    }
 }
