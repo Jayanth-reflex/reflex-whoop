@@ -48,14 +48,15 @@ The owner reviewed a full redesign (design canvas, rev 2) and decided:
 | `champagne` | `#D3BE99` | Brand: tint, primary buttons, selected tab, toggles |
 | `onChampagne` | `#15120D` | Text on champagne |
 | `jade` | `#71C69A` | Recovery high, success |
-| `platinum` | `#BFBEB9` | Recovery moderate |
+| `amber` | `#F1BF5B` | Recovery moderate |
 | `garnet` | `#DB6D60` | Recovery low, destructive |
-| `amber` | `#EDB161` | Unusual readings, warnings |
+| `sunstone` | `#F18D57` | Unusual readings, warnings, membership ended |
 | `roseQuartz` | `#E28DAE` | Heart rate from the band |
 | `sleepREM` / `sleepLight` / `sleepDeep` | `#86CADF` / `#658DC9` / `#555594` | Sleep stages; awake is `ivory` at tertiary |
 
-Gems share OKLCH lightness and chroma, varying only in hue. Recovery moderate is
-platinum, not yellow, so it can't be mistaken for champagne or amber. Every
+Recovery moderate is amber (owner's choice, canvas rev 2.2). It stays distinct from
+champagne through chroma: 0.13 against 0.055. Unusual readings use sunstone so amber
+keeps a single meaning. Every
 colour-coded state also carries a word; colour is never the only signal.
 
 ### Type
@@ -71,7 +72,7 @@ colour-coded state also carries a word; colour is never the only signal.
 ### Components (all in `UI/DesignSystem/`)
 
 - `RangeStrip`: the track, the normal band (mean ± 1 SD of the **60-day** baseline),
-  and a dot for the value. The dot is amber when |z| ≥ 2, which matches
+  and a dot for the value. The dot is sunstone when |z| ≥ 2, which matches
   `AnomalyEngine`'s single-metric threshold, so the strip and the anomalies table
   always agree. No dot when there is no reading. VoiceOver reads the value, the
   range, and the status.
@@ -83,7 +84,7 @@ colour-coded state also carries a word; colour is never the only signal.
   and lines break where readings are missing rather than drawing across gaps.
 - `Sparkline`: the range selected on Trends (default 30 days), normal band, emphasised last point.
 - `PrimaryButtonStyle`: champagne capsule, `onChampagne` label, at least 52 pt tall.
-- `SectionHeader`, and `SourceStatusRow` (dot plus a word).
+- `SectionHeader`, `StatusLabel` (dot plus a word), and `SourceRow`.
 
 ## Information architecture
 
@@ -134,10 +135,10 @@ no SQL and no arithmetic.
   metrics (recovery, strain, sleep performance, HRV, resting HR, breathing rate,
   skin temperature, blood oxygen). It carries label, unit, number formatting,
   baseline column (if any), and Trends section.
-- `Analysis/NormalRange.swift`: `NormalRange(mean, stddev)` and `ReadingStatus`
-  (`within`, `above`, `below`, `unusuallyHigh`, `unusuallyLow`, `noReading`,
-  `notEnoughHistory`) with a single `classify(value:range:)`. Also `RecoveryBand`
-  and `StrainBand`. Pure Swift, no SwiftUI.
+- `Analysis/NormalRange.swift`, `ReadingStatus.swift` (`within`, `above`, `below`,
+  `unusuallyHigh`, `unusuallyLow`, `noReading`, `notEnoughHistory`, with a single
+  `classify(_:against:)`), `RecoveryBand.swift` and `StrainBand.swift`. One type per
+  file, pure Swift, no SwiftUI.
 - `Analysis/TodayQueries.swift`: `TodaySnapshot` holds the latest day's metrics,
   each vital's 60-day range, latest sleep with its performance, that day's
   anomalies, and the last sync time.
