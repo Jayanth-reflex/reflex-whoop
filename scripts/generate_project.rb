@@ -16,7 +16,9 @@ PROJECT_PATH = File.join(ROOT, 'ReflexWhoop.xcodeproj')
 APP_NAME = 'ReflexWhoop'
 TEST_NAME = 'ReflexWhoopTests'
 BUNDLE_ID = 'com.reflexwhoop.app'
-DEPLOYMENT_TARGET = '17.0'
+# iOS 26: the app runs on one iPhone (iOS 27). The floor removes every
+# #available branch for Liquid Glass, Tab and navigationSubtitle.
+DEPLOYMENT_TARGET = '26.0'
 
 project = Xcodeproj::Project.new(PROJECT_PATH)
 
