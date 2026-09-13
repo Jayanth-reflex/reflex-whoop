@@ -44,6 +44,14 @@ final class SpikeRecorder {
 
     private var reassembler = FrameReassembler()
     private var sentSafeSequence = false
+    private var lastWatermarkAt: Date?
+
+    /// How often the session row's "last seen" watermark is refreshed while
+    /// recording. Every real session so far ended by the app being killed
+    /// rather than by `stopSession` running, which left `ended_at` NULL on all
+    /// 15 of them — so the clean-stop path cannot be the only thing that ever
+    /// records when a session ended.
+    private static let watermarkInterval: TimeInterval = 30
 
     init(dbPool: DatabasePool) {
         self.dbPool = dbPool
@@ -80,6 +88,7 @@ final class SpikeRecorder {
         deviceMetadataStrings = []
         lastR10Candidate = nil
         hrCrossCheckDiffBpm = nil
+        lastWatermarkAt = nil
         sentSafeSequence = false
         reassembler = FrameReassembler()
         connection.start()
@@ -155,9 +164,32 @@ final class SpikeRecorder {
         }
     }
 
+    /// Refreshes `ended_at` to the last moment we saw data, so a session killed
+    /// mid-recording still has a real end time instead of NULL. `ended_reason`
+    /// stays NULL until `stopSession` sets it — that is what distinguishes "the
+    /// app was killed here" from "the user stopped it here".
+    private func persistWatermarkIfDue(now: Date) {
+        guard let id = sessionID else { return }
+        if let last = lastWatermarkAt, now.timeIntervalSince(last) < Self.watermarkInterval { return }
+        lastWatermarkAt = now
+
+        let frameCount = frameCount
+        let byteCount = byteCount
+        let dbPool = dbPool
+        Task {
+            try? await dbPool.write { db in
+                try db.execute(
+                    sql: "UPDATE ble_sessions SET ended_at = ?, sample_count = ?, byte_count = ? WHERE id = ?",
+                    arguments: [Int64(now.timeIntervalSince1970), frameCount, byteCount, id]
+                )
+            }
+        }
+    }
+
     private func handleRawFrame(characteristic: CBUUID, data: Data, receivedAt: Date) {
         frameCount += 1
         byteCount += data.count
+        persistWatermarkIfDue(now: receivedAt)
 
         // Inbox-first: this write happens unconditionally, before any attempt
         // to interpret the bytes. A wrong envelope hypothesis below loses no
