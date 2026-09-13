@@ -106,9 +106,7 @@ struct LatestSleepDetail: Decodable, FetchableRecord {
 
     /// Ended today or yesterday, so "last night" is true of it.
     func isFromLastNight(calendar: Calendar = .current, now: Date = .now) -> Bool {
-        let end = interval.upperBound
-        return calendar.isDate(end, inSameDayAs: now)
-            || calendar.date(byAdding: .day, value: -1, to: now).map { calendar.isDate(end, inSameDayAs: $0) } == true
+        calendar.relativeDay(of: interval.upperBound, now: now) != nil
     }
 
     /// Light + deep + REM. `nil` when WHOOP sent no stage totals.

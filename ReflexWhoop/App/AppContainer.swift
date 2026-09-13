@@ -124,10 +124,13 @@ final class AppContainer {
         return try await Task.detached { try BleNormalizer.replay(dbPool) }.value
     }
 
-    /// The app-lifetime recorder used by continuous collection. `nil` unless
-    /// `CollectionSettings.continuousCollectionEnabled` is on — the Live screen
-    /// creates its own short-lived recorder otherwise.
+    /// The app-lifetime recorder, and the only one: the band is recorded when
+    /// `CollectionSettings.continuousCollectionEnabled` is on and not at all
+    /// otherwise. `nil` while it's off.
     @MainActor private(set) var continuousRecorder: SpikeRecorder?
+
+    /// Why recording couldn't start the last time it was asked to.
+    @MainActor private(set) var recordingStartError: String?
 
     /// Starts standing band collection if it is enabled.
     ///
@@ -142,15 +145,24 @@ final class AppContainer {
     @MainActor
     func startContinuousCollectionIfEnabled() {
         guard CollectionSettings.continuousCollectionEnabled, continuousRecorder == nil else { return }
-        let recorder = makeSpikeRecorder()
-        continuousRecorder = recorder
-        try? recorder.startContinuousSession()
+        // Starting the session creates the `CBCentralManager`, which is what
+        // shows the Bluetooth permission prompt: it appears when someone turns
+        // recording on, never at a launch where recording is off.
+        let recorder = SpikeRecorder(dbPool: database.dbPool)
+        do {
+            try recorder.startContinuousSession()
+            continuousRecorder = recorder
+            recordingStartError = nil
+        } catch {
+            recordingStartError = error.localizedDescription
+        }
     }
 
     @MainActor
     func stopContinuousCollection() {
         continuousRecorder?.stopSession(reason: "continuous_disabled")
         continuousRecorder = nil
+        recordingStartError = nil
     }
 
     @MainActor
@@ -161,15 +173,5 @@ final class AppContainer {
         } else {
             stopContinuousCollection()
         }
-    }
-
-    /// Phase 4. Deliberately not a stored property: constructing a
-    /// `SpikeRecorder` doesn't touch Bluetooth by itself (that only happens on
-    /// `startSession`), but keeping it request-scoped means `LiveView` controls
-    /// exactly when a `CBCentralManager` gets created, which is what triggers
-    /// the OS Bluetooth-permission prompt.
-    @MainActor
-    func makeSpikeRecorder() -> SpikeRecorder {
-        SpikeRecorder(dbPool: database.dbPool)
     }
 }

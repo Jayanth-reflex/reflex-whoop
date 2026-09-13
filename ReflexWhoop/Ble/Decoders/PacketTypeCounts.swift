@@ -1,6 +1,6 @@
 import Foundation
 
-/// Per-`packet_type` frame tally for the Live screen's "channel activity"
+/// Per-`packet_type` frame tally for Signal details' "channel activity"
 /// diagnostic. Exists to answer one question cheaply, without any decode
 /// work: is a given channel (IMU `0x33`/`0x34`, R10 `0x2B`, R21/r22 — whatever
 /// packet_type those turn out to be) producing *any* frames at all, or is

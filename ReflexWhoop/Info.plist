@@ -60,10 +60,14 @@
 	     exists in this app. See docs/DECISIONS.md and the BLE safety rails in
 	     docs/design.md. -->
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>ReflexWhoop connects directly to your own WHOOP band to stream live heart rate and motion data alongside the WHOOP cloud data it already syncs.</string>
+	<string>ReflexWhoop connects to your own WHOOP band to record your heart rate. It only reads from the band and never changes anything on it.</string>
 
+	<!-- Onyx, so launch doesn't flash white before the black app appears. -->
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIColorName</key>
+		<string>Onyx</string>
+	</dict>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

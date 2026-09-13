@@ -18,14 +18,16 @@ final class SpikeRecorder {
     let connection = BandConnection()
 
     private(set) var sessionID: String?
+    private(set) var sessionStartedAt: Date?
     private(set) var frameCount = 0
     private(set) var byteCount = 0
     private(set) var reassembledFrameCount = 0
     private(set) var validCrcFrameCount = 0
-    private(set) var lastHelloInner: Data?
     /// Per `RealtimeHRDecoder` / docs/PROTOCOL-GEN5.md — the one sensor field
     /// confirmed so far. `nil` until a `0x28` record has actually arrived.
     private(set) var lastHeartRateBpm: UInt8?
+    /// Heart-rate records decoded this session.
+    private(set) var heartRateReadingCount = 0
     /// The last 20 minutes of decoded heart rate, for the live chart.
     private(set) var recentHeartRate = HeartRateWindow(span: 20 * 60)
     /// Frame count per inner packet_type, across every CRC-valid frame this
@@ -99,11 +101,12 @@ final class SpikeRecorder {
             )
         }
         sessionID = id
+        sessionStartedAt = now
+        heartRateReadingCount = 0
         frameCount = 0
         byteCount = 0
         reassembledFrameCount = 0
         validCrcFrameCount = 0
-        lastHelloInner = nil
         recentHeartRate = HeartRateWindow(span: recentHeartRate.span)
         packetTypeCounts = PacketTypeCounts()
         deviceMetadataStrings = []
@@ -139,6 +142,7 @@ final class SpikeRecorder {
         }
         connection.disconnect()
         sessionID = nil
+        sessionStartedAt = nil
     }
 
     /// Sends the safe, read-only-plus-live-stream sequence from docs/design.md's
@@ -239,11 +243,9 @@ final class SpikeRecorder {
             if let packetType = frame.inner.first {
                 packetTypeCounts.record(packetType)
             }
-            if lastHelloInner == nil {
-                lastHelloInner = frame.inner
-            }
             if let bpm = RealtimeHRDecoder.heartRateBpm(inner: frame.inner) {
                 lastHeartRateBpm = bpm
+                heartRateReadingCount += 1
                 recentHeartRate.append(bpm: Int(bpm), at: receivedAt)
                 if let candidate = lastR10Candidate {
                     hrCrossCheckDiffBpm = Int(bpm) - Int(candidate.candidateHrBpm)

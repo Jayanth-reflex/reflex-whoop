@@ -71,7 +71,7 @@ struct ChunkStore {
 
     /// Reads and decodes every sample in `channel` for `sessionID` within
     /// `[startTs, endTs]`. Only called when the UI actually zooms into a window —
-    /// the Trends/Live screens read `ts_rollup_minute` for everything else.
+    /// the Band tab reads `ts_rollup_minute` for everything else.
     static func read(
         _ reader: GRDB.Database,
         channel: String,

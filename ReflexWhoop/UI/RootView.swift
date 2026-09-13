@@ -15,7 +15,7 @@ struct RootView: View {
                 TrendsView()
             }
             Tab("Band", systemImage: "applewatch", value: AppTab.band) {
-                LiveView()
+                BandView()
             }
             Tab("Archive", systemImage: "archivebox", value: AppTab.archive) {
                 DataView()

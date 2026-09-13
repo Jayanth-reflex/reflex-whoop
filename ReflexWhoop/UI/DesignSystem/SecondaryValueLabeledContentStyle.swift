@@ -9,7 +9,7 @@ import SwiftUI
 struct SecondaryValueLabeledContentStyle: LabeledContentStyle {
     func makeBody(configuration: Configuration) -> some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .firstTextBaseline, spacing: 16) {
+            HStack(spacing: 16) {
                 configuration.label
                 Spacer(minLength: 0)
                 configuration.content

@@ -1,7 +1,7 @@
 import Foundation
 
-/// Whether the app should hold a band connection open continuously rather than
-/// only while someone is looking at the Live screen.
+/// Whether the app records from the band: holds the connection open,
+/// reconnects by itself, and keeps going in the background.
 ///
 /// This exists for the case docs/ADR-001-data-sovereignty.md is about: when the
 /// WHOOP cloud source stops producing data, the band is the only source left,
@@ -12,7 +12,8 @@ import Foundation
 /// silently starting that on someone's behalf because they launched an app is
 /// not a decision to make for them.
 enum CollectionSettings {
-    private static let continuousKey = "continuousBleCollection"
+    /// Public so a view can observe the setting with `@AppStorage`.
+    static let continuousKey = "continuousBleCollection"
 
     static var continuousCollectionEnabled: Bool {
         get { UserDefaults.standard.bool(forKey: continuousKey) }
