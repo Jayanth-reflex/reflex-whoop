@@ -4,11 +4,13 @@ import SwiftUI
 struct LastScoresRows: View {
     let snapshot: TodaySnapshot
 
+    @Environment(\.temperatureUnit) private var temperature
+
     var body: some View {
         ForEach([Metric.recovery, .heartRateVariability]) { metric in
             LabeledContent(metric.shortLabel) {
                 if let value = snapshot.value(of: metric) {
-                    Text("Last: \(metric.formattedWithUnit(value)) on \(scoredDay)")
+                    Text("Last: \(metric.formattedWithUnit(value, temperature: temperature)) on \(scoredDay)")
                 } else {
                     Text("No score")
                 }

@@ -205,6 +205,20 @@ stays as it is (it's what every engine joins on); only what's shown changes:
 - Strain reads "so far" while the day's cycle has no end, not by comparing dates.
 - "Last night" means a sleep that ended today; anything older is "Latest sleep".
 
+## Skin temperature leads with its change from normal
+
+WHOOP sends skin temperature as an absolute reading (33.9 °C), but the WHOOP app shows
+it as a change from the person's baseline (+0.2 °C), because the number itself varies
+between people far more than it varies night to night. Skin temperature here leads
+with its difference from that day's 60-day normal mean, with the reading itself beside
+it. A night without a normal range shows the reading alone rather than a difference
+made up from too little history.
+
+Temperatures follow a Temperature setting in Archive: Automatic (the iPhone's own
+temperature unit, which can differ from its region), Celsius or Fahrenheit. Stored
+values, exports and every calculation stay in Celsius; only display converts. A
+difference converts without Fahrenheit's 32° offset, by converting both ends.
+
 ## Onyx sets secondary styles explicitly
 
 The app sets ivory as the root foreground style so text reads warm rather than

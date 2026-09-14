@@ -7,6 +7,7 @@ struct MetricHistoryCard: View {
     let summary: MetricHistorySummary
 
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.temperatureUnit) private var temperature
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -33,8 +34,8 @@ struct MetricHistoryCard: View {
             Divider()
 
             StatRow {
-                StatValue(title: "Average", value: metric.formatted(summary.average), unit: metric.unit)
-                StatValue(title: "Range", value: "\(metric.formatted(summary.lowest))–\(metric.formatted(summary.highest))", unit: metric.unit)
+                StatValue(title: "Average", value: metric.formatted(summary.average, temperature: temperature), unit: metric.unit(temperature))
+                StatValue(title: "Range", value: "\(metric.formatted(summary.lowest, temperature: temperature))–\(metric.formatted(summary.highest, temperature: temperature))", unit: metric.unit(temperature))
                 StatValue(title: metric.periodNoun, value: summary.count.formatted())
             }
         }

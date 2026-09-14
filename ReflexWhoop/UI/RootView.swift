@@ -3,10 +3,12 @@ import SwiftUI
 struct RootView: View {
     @Environment(AppContainer.self) private var container
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.locale) private var locale
 
     @State private var selection = AppTab.today
     @State private var isShowingOnboarding = false
     @AppStorage(Onboarding.completedKey) private var hasCompletedOnboarding = false
+    @AppStorage(TemperaturePreference.key) private var temperaturePreference = TemperaturePreference.system
 
     var body: some View {
         TabView(selection: $selection) {
@@ -24,6 +26,7 @@ struct RootView: View {
             }
         }
         .tint(Color.accent)
+        .environment(\.temperatureUnit, temperaturePreference.unit(locale: locale))
         .fullScreenCover(isPresented: $isShowingOnboarding) {
             OnboardingFlow(onFinish: finishOnboarding)
         }

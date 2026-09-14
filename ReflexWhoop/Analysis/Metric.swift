@@ -49,14 +49,15 @@ enum Metric: String, CaseIterable, Identifiable, Hashable {
     /// Short enough for a navigation bar title.
     var shortLabel: String { self == .heartRateVariability ? "HRV" : label }
 
-    var unit: String {
+    /// The unit shown after a value. Only temperature follows `temperature`.
+    func unit(_ temperature: TemperatureUnit) -> String {
         switch self {
         case .recovery, .sleepPerformance, .bloodOxygen: "%"
         case .strain: ""
         case .heartRateVariability: "ms"
         case .restingHeartRate: "bpm"
         case .breathingRate: "/min"
-        case .skinTemperature: "°C"
+        case .skinTemperature: temperature.symbol
         }
     }
 
@@ -77,21 +78,51 @@ enum Metric: String, CaseIterable, Identifiable, Hashable {
     /// Whether `BaselineEngine` keeps a normal range for this metric.
     var hasNormalRange: Bool { BaselineEngine.metrics.contains(column) }
 
-    func formatted(_ value: Double, locale: Locale = .current) -> String {
-        value.formatted(.number.precision(.fractionLength(fractionDigits)).locale(locale))
+    /// Like WHOOP, skin temperature is read as its change from the person's
+    /// normal: the number itself varies too much between people to mean much.
+    var leadsWithDifferenceFromNormal: Bool { self == .skinTemperature }
+
+    /// A stored value in the unit it's shown in, for plotting.
+    func displayValue(_ value: Double, temperature: TemperatureUnit) -> Double {
+        self == .skinTemperature ? temperature.value(fromCelsius: value) : value
+    }
+
+    func formatted(_ value: Double, temperature: TemperatureUnit, locale: Locale = .current) -> String {
+        formatted(displayValue: displayValue(value, temperature: temperature), locale: locale)
+    }
+
+    /// A value already in the unit it's shown in, such as a chart position.
+    func formatted(displayValue: Double, locale: Locale = .current) -> String {
+        displayValue.formatted(.number.precision(.fractionLength(fractionDigits)).locale(locale))
     }
 
     /// The unit as it follows a number: "%" directly, anything else after a space.
-    var unitSuffix: String {
-        switch unit {
+    func unitSuffix(_ temperature: TemperatureUnit) -> String {
+        switch unit(temperature) {
         case "": ""
         case "%": "%"
-        default: " \(unit)"
+        case let unit: " \(unit)"
         }
     }
 
-    func formattedWithUnit(_ value: Double, locale: Locale = .current) -> String {
-        formatted(value, locale: locale) + unitSuffix
+    func formattedWithUnit(_ value: Double, temperature: TemperatureUnit, locale: Locale = .current) -> String {
+        formatted(value, temperature: temperature, locale: locale) + unitSuffix(temperature)
+    }
+
+    /// How far `value` is from the middle of `range`, signed: "+0.5". A change
+    /// that rounds to nothing has no sign.
+    func formattedDifference(_ value: Double, from range: NormalRange, temperature: TemperatureUnit, locale: Locale = .current) -> String {
+        // Both ends converted, so Fahrenheit's 32° offset cancels out.
+        let difference = displayValue(value, temperature: temperature) - displayValue(range.mean, temperature: temperature)
+        let step = pow(10, Double(fractionDigits))
+        let rounded = (difference * step).rounded() / step
+        return (rounded == 0 ? 0 : rounded)
+            .formatted(.number.precision(.fractionLength(fractionDigits)).sign(strategy: .always(includingZero: false)).locale(locale))
+            .replacing("-", with: "\u{2212}")
+    }
+
+    func formattedDifferenceWithUnit(_ value: Double, from range: NormalRange, temperature: TemperatureUnit, locale: Locale = .current) -> String {
+        formattedDifference(value, from: range, temperature: temperature, locale: locale) + unitSuffix(temperature)
     }
 
     init?(column: String) {

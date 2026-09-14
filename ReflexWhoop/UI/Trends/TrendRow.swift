@@ -11,7 +11,7 @@ struct TrendRow: View {
                 Text(metric.label)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                MetricValueText(metric: metric, value: points.last?.value)
+                MetricValueText(metric: metric, value: points.last?.value, range: points.last?.range)
                     .font(.title2)
             }
         } trailing: {

@@ -8,6 +8,8 @@ struct StrainRow: View {
     /// The day's cycle is still open, so the strain is a running total.
     let isInProgress: Bool
 
+    @Environment(\.temperatureUnit) private var temperature
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             AdaptiveRow(alignment: .firstTextBaseline) {
@@ -16,7 +18,7 @@ struct StrainRow: View {
                     .foregroundStyle(.secondary)
             } trailing: {
                 if let strain {
-                    Text("\(Text(Metric.strain.formatted(strain)).font(.display(.title))) \(Text(detail(for: strain)).font(.subheadline).foregroundStyle(.secondary))")
+                    Text("\(Text(Metric.strain.formatted(strain, temperature: temperature)).font(.display(.title))) \(Text(detail(for: strain)).font(.subheadline).foregroundStyle(.secondary))")
                 } else {
                     Text("Not scored yet")
                         .font(.subheadline)

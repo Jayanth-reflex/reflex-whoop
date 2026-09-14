@@ -7,6 +7,8 @@ struct RecoveryHero: View {
     let usual: NormalRange?
     let isIllnessFlagged: Bool
 
+    @Environment(\.temperatureUnit) private var temperature
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Recovery")
@@ -16,7 +18,7 @@ struct RecoveryHero: View {
             if let score {
                 let band = RecoveryBand(score: score)
                 AdaptiveRow(alignment: .firstTextBaseline, spacing: 14, pinsTrailing: false) {
-                    HeroValue(Metric.recovery.formatted(score), unit: Metric.recovery.unit)
+                    HeroValue(Metric.recovery.formatted(score, temperature: temperature), unit: Metric.recovery.unit(temperature))
                 } trailing: {
                     StatusLabel(text: band.label, tint: band.tint)
                         .font(.subheadline.weight(.semibold))

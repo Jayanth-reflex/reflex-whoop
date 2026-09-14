@@ -8,6 +8,7 @@ struct RecoveryZones: View {
     let usual: NormalRange?
 
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.temperatureUnit) private var temperature
 
     /// The marker's radius plus half its stroke, so it isn't clipped at 0 or 100.
     private static let inset = 11.5
@@ -53,8 +54,8 @@ struct RecoveryZones: View {
     }
 
     private func usualText(_ usual: NormalRange) -> String {
-        let lower = Metric.recovery.formatted(max(usual.lowerBound, RecoveryBand.scale.lowerBound))
-        let upper = Metric.recovery.formatted(min(usual.upperBound, RecoveryBand.scale.upperBound))
+        let lower = Metric.recovery.formatted(max(usual.lowerBound, RecoveryBand.scale.lowerBound), temperature: temperature)
+        let upper = Metric.recovery.formatted(min(usual.upperBound, RecoveryBand.scale.upperBound), temperature: temperature)
         return "Your usual \(lower)–\(upper)"
     }
 

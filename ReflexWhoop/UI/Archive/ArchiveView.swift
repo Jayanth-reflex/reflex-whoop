@@ -6,6 +6,9 @@ struct ArchiveView: View {
     @Binding var selection: AppTab
 
     @Environment(AppContainer.self) private var container
+    @Environment(\.locale) private var locale
+
+    @AppStorage(TemperaturePreference.key) private var temperaturePreference = TemperaturePreference.system
 
     @State private var sources: AppContainer.SourceSnapshot?
     @State private var byteCount: Int64 = 0
@@ -61,6 +64,18 @@ struct ArchiveView: View {
                             SectionHeader(title: "Your data")
                         } footer: {
                             SectionFooter(text: "The app never deletes anything. Deleting the app does, so keep an exported copy somewhere safe.")
+                        }
+
+                        Section {
+                            Picker("Temperature", selection: $temperaturePreference) {
+                                ForEach(TemperaturePreference.allCases) { preference in
+                                    Text(preference.title(locale: locale)).tag(preference)
+                                }
+                            }
+                        } header: {
+                            SectionHeader(title: "Units")
+                        } footer: {
+                            SectionFooter(text: "Automatic follows the temperature unit set on this iPhone.")
                         }
 
                         Section {

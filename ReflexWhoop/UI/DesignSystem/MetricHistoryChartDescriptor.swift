@@ -3,8 +3,10 @@ import SwiftUI
 /// What VoiceOver's Audio Graph and chart detail read for a metric's history:
 /// each day's value, and which days were unusual.
 struct MetricHistoryChartDescriptor: AXChartDescriptorRepresentable {
+    /// Already in the unit they're shown in (`MetricPoint.displayed`).
     let points: [MetricPoint]
     let metric: Metric
+    let temperature: TemperatureUnit
 
     func makeChartDescriptor() -> AXChartDescriptor {
         let times = points.map { $0.date.timeIntervalSince1970 }
@@ -18,7 +20,7 @@ struct MetricHistoryChartDescriptor: AXChartDescriptorRepresentable {
             title: metric.label,
             range: (values.min() ?? 0)...(values.max() ?? 0),
             gridlinePositions: []
-        ) { "\(metric.formatted($0)) \(metric.unit)" }
+        ) { metric.formatted(displayValue: $0) + metric.unitSuffix(temperature) }
         let series = AXDataSeriesDescriptor(
             name: metric.label,
             isContinuous: false,
