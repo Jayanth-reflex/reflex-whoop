@@ -42,8 +42,18 @@ final class ReadModelTests: XCTestCase {
         }
     }
 
+    private func insertCycle(startingAt iso: String, ended: Bool) throws {
+        let start = try XCTUnwrap(ISO8601DateFormatter().date(from: iso))
+        try database.dbPool.write { db in
+            try db.execute(
+                sql: #"INSERT INTO cycles (id, start, "end", score_state, source) VALUES (?, ?, ?, 'SCORED', 'api')"#,
+                arguments: [iso, Int64(start.timeIntervalSince1970), ended ? Int64(start.timeIntervalSince1970) + 86_400 : nil]
+            )
+        }
+    }
+
     func testTodayIsNilWithNoDays() throws {
-        XCTAssertNil(try database.dbPool.read(TodaySnapshot.load))
+        XCTAssertNil(try database.dbPool.read { try TodaySnapshot.load($0) })
     }
 
     func testTodayUsesLatestDayAndOnlyTheNormalRangeWindow() throws {
@@ -53,7 +63,7 @@ final class ReadModelTests: XCTestCase {
         try insertBaseline("hrv_rmssd_milli", day: "2026-09-12", mean: 99, stddev: 1, window: 30)
         try insertAnomaly(day: "2026-09-12", kind: .illnessFlag, metric: nil)
 
-        let today = try XCTUnwrap(try database.dbPool.read(TodaySnapshot.load))
+        let today = try XCTUnwrap(try database.dbPool.read { try TodaySnapshot.load($0) })
         XCTAssertEqual(today.metrics.day, "2026-09-12")
         XCTAssertEqual(today.ranges[.heartRateVariability], NormalRange(mean: 64, standardDeviation: 6))
         XCTAssertEqual(today.status(of: .heartRateVariability), .above)
@@ -70,7 +80,7 @@ final class ReadModelTests: XCTestCase {
             metric: nil,
             detail: #"{"triggeredSignals":["respiratory_rate","resting_heart_rate","hrv_rmssd_milli"],"zScores":{}}"#
         )
-        let today = try XCTUnwrap(try database.dbPool.read(TodaySnapshot.load))
+        let today = try XCTUnwrap(try database.dbPool.read { try TodaySnapshot.load($0) })
         XCTAssertEqual(today.illnessFlag?.illnessSignals, [.breathingRate, .restingHeartRate, .heartRateVariability])
     }
 
@@ -78,13 +88,61 @@ final class ReadModelTests: XCTestCase {
     func testUnreadableIllnessDetailStillFlagsTheDay() throws {
         try insertDay("2026-09-12", recovery: 20)
         try insertAnomaly(day: "2026-09-12", kind: .illnessFlag, metric: nil, detail: "not json")
-        let today = try XCTUnwrap(try database.dbPool.read(TodaySnapshot.load))
+        let today = try XCTUnwrap(try database.dbPool.read { try TodaySnapshot.load($0) })
         XCTAssertEqual(today.illnessFlag?.illnessSignals, [])
+    }
+
+    /// Strain is a running total until WHOOP closes the day's cycle.
+    func testTheDaysCycleIsInProgressUntilItHasAnEnd() throws {
+        try insertDay("2026-09-12", recovery: 85)
+        XCTAssertFalse(try XCTUnwrap(try database.dbPool.read { try TodaySnapshot.load($0) }).isCycleInProgress, "no cycle")
+
+        try insertCycle(startingAt: "2026-09-12T17:32:00Z", ended: false)
+        XCTAssertTrue(try XCTUnwrap(try database.dbPool.read { try TodaySnapshot.load($0) }).isCycleInProgress)
+
+        try database.dbPool.write { try $0.execute(sql: #"UPDATE cycles SET "end" = start + 86400"#) }
+        XCTAssertFalse(try XCTUnwrap(try database.dbPool.read { try TodaySnapshot.load($0) }).isCycleInProgress)
+    }
+
+    /// Asleep at 23:02 in India on the 12th: the scores are the 13th's, and
+    /// they're today's on the 13th only.
+    func testTodaysDateIsTheMorningTheScoresBelongTo() throws {
+        var india = Calendar(identifier: .gregorian)
+        india.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Kolkata"))
+        try insertDay("2026-09-12", recovery: 85)
+        let formatter = ISO8601DateFormatter()
+        let asleep = try XCTUnwrap(formatter.date(from: "2026-09-12T23:02:00+05:30"))
+        let awake = try XCTUnwrap(formatter.date(from: "2026-09-13T06:28:00+05:30"))
+        try database.dbPool.write { db in
+            try db.execute(
+                sql: #"INSERT INTO sleeps (id, start, "end", nap, score_state, source) VALUES ('night', ?, ?, 0, 'SCORED', 'api')"#,
+                arguments: [Int64(asleep.timeIntervalSince1970), Int64(awake.timeIntervalSince1970)]
+            )
+        }
+
+        let today = try XCTUnwrap(try database.dbPool.read { try TodaySnapshot.load($0, calendar: india) })
+        XCTAssertEqual(today.date, india.date(from: DateComponents(year: 2026, month: 9, day: 13)))
+        XCTAssertTrue(today.isToday(calendar: india, now: try XCTUnwrap(formatter.date(from: "2026-09-13T10:00:00+05:30"))))
+        XCTAssertFalse(today.isToday(calendar: india, now: try XCTUnwrap(formatter.date(from: "2026-09-14T10:00:00+05:30"))))
+    }
+
+    /// Today follows the database, so scores that land after it first loaded
+    /// (the first sync, a background sync) appear without a pull.
+    func testTodaysReadingsUpdateWhenScoresArrive() async throws {
+        var readings = TodayReadings.observation(since: .now).values(in: database.dbPool).makeAsyncIterator()
+        let before = try await readings.next()
+        XCTAssertNil(try XCTUnwrap(before).snapshot)
+
+        try await database.dbPool.write { db in
+            try db.execute(sql: "INSERT INTO daily_metrics (day, recovery_score, algo_version, computed_at) VALUES ('2026-09-12', 85, 1, 0)")
+        }
+        let after = try await readings.next()
+        XCTAssertEqual(try XCTUnwrap(after).snapshot?.metrics.day, "2026-09-12")
     }
 
     func testTodayWithoutAFlagHasNone() throws {
         try insertDay("2026-09-12", recovery: 80)
-        XCTAssertNil(try XCTUnwrap(try database.dbPool.read(TodaySnapshot.load)).illnessFlag)
+        XCTAssertNil(try XCTUnwrap(try database.dbPool.read { try TodaySnapshot.load($0) }).illnessFlag)
     }
 
     func testHistorySummary() throws {
@@ -130,7 +188,9 @@ final class ReadModelTests: XCTestCase {
         XCTAssertTrue(days[1].readings.isEmpty)
     }
 
-    func testSleepIsFromLastNightOnlyWhenItEndedTodayOrYesterday() throws {
+    /// "Last night" is only ever this morning's wake-up: a sleep that ended
+    /// yesterday is the night before last by now.
+    func testSleepIsFromLastNightOnlyWhenItEndedToday() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Kolkata"))
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-09-13T12:00:00+05:30"))
@@ -139,7 +199,7 @@ final class ReadModelTests: XCTestCase {
             return LatestSleepDetail(start: Int64(end.timeIntervalSince1970) - 28_800, end: Int64(end.timeIntervalSince1970))
         }
         XCTAssertTrue(try sleep(endingAt: "2026-09-13T06:40:00+05:30").isFromLastNight(calendar: calendar, now: now))
-        XCTAssertTrue(try sleep(endingAt: "2026-09-12T07:00:00+05:30").isFromLastNight(calendar: calendar, now: now))
+        XCTAssertFalse(try sleep(endingAt: "2026-09-12T07:00:00+05:30").isFromLastNight(calendar: calendar, now: now))
         XCTAssertFalse(try sleep(endingAt: "2026-09-11T07:00:00+05:30").isFromLastNight(calendar: calendar, now: now))
     }
 
@@ -194,7 +254,7 @@ final class ReadModelTests: XCTestCase {
     func testReadinessReachesNoReadModel() throws {
         try insertDay("2026-09-12", recovery: 80)
         try database.dbPool.write { try $0.execute(sql: "UPDATE daily_metrics SET readiness_score = 77, sleep_debt_milli = 7668000") }
-        let today = try XCTUnwrap(try database.dbPool.read(TodaySnapshot.load))
+        let today = try XCTUnwrap(try database.dbPool.read { try TodaySnapshot.load($0) })
         let fields = Mirror(reflecting: today.metrics).children.compactMap(\.label)
         XCTAssertFalse(fields.contains { $0.localizedStandardContains("readiness") || $0.localizedStandardContains("debt") })
         XCTAssertFalse(Metric.allCases.contains { $0.column == "readiness_score" })

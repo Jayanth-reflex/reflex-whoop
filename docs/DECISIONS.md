@@ -191,13 +191,19 @@ recorder. The old one-off session started from the Live screen did the same thin
 less resilience, so it was removed rather than kept as a second path. The Bluetooth
 permission prompt therefore appears when someone turns recording on, never at launch.
 
-## Stored days are formatted in UTC
+## Days are shown as the morning they belong to
 
-`RecordDAO.dayString(for:)` writes days as UTC calendar days, and
-`RecordDAO.date(forDay:)` reads them back as midnight UTC. Formatted in local time,
-that instant is still the previous evening anywhere west of UTC, so every date that
-stands for a stored day uses `Date.FormatStyle.recordedDay()`, which formats in UTC.
-Times of real events (sleep, recordings) stay in local time.
+`RecordDAO.dayString(for:)` keys a day by the UTC date its cycle started, and a cycle
+starts when its night's sleep does. For anyone who falls asleep before midnight UTC,
+every night in India, that key is the evening before the morning the scores belong to,
+and comparing it with today's UTC date never matches the cycle in progress. The key
+stays as it is (it's what every engine joins on); only what's shown changes:
+
+- `DayDates` shows a day as the local date its main sleep ended, the same sleep
+  `DailyMetricsBuilder` scores the day from. A day with no sleep keeps its key's date.
+  Those dates are local midnight and are formatted in local time.
+- Strain reads "so far" while the day's cycle has no end, not by comparing dates.
+- "Last night" means a sleep that ended today; anything older is "Latest sleep".
 
 ## Onyx sets secondary styles explicitly
 

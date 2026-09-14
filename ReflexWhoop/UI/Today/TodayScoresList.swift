@@ -36,7 +36,7 @@ struct TodayScoresList: View {
 
                 Section {
                     NavigationLink(value: Metric.strain) {
-                        StrainRow(strain: snapshot.value(of: .strain), isToday: snapshot.metrics.day == RecordDAO.dayString(for: .now))
+                        StrainRow(strain: snapshot.value(of: .strain), isToday: snapshot.isToday(), isInProgress: snapshot.isCycleInProgress)
                     }
                     .navigationLinkIndicatorVisibility(.hidden)
                 }

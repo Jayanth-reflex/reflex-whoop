@@ -88,8 +88,8 @@ final class SourceStatusTests: XCTestCase {
         try database.dbPool.read { db in
             let archive = try SourceStatus.archive(db)
             XCTAssertEqual(archive.dayCount, 3)
-            XCTAssertEqual(archive.firstDay, "2026-01-01")
-            XCTAssertEqual(archive.lastDay, "2026-01-03")
+            XCTAssertEqual(archive.firstDate, DayDates.keyDate("2026-01-01", calendar: .current))
+            XCTAssertEqual(archive.lastDate, DayDates.keyDate("2026-01-03", calendar: .current))
             XCTAssertFalse(archive.isEmpty)
         }
     }

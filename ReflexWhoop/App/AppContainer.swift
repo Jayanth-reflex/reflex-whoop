@@ -98,7 +98,7 @@ final class AppContainer {
         return snapshot ?? SourceSnapshot(
             whoop: hasCredentials ? .unauthorized : .notConfigured,
             band: .notConfigured,
-            archive: ArchiveSummary(firstDay: nil, lastDay: nil, dayCount: 0, bleSessionCount: 0, bleSampleCount: 0)
+            archive: ArchiveSummary(firstDate: nil, lastDate: nil, dayCount: 0, bleSessionCount: 0, bleSampleCount: 0)
         )
     }
 

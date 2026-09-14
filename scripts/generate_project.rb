@@ -139,8 +139,9 @@ test_target.build_configurations.each do |config|
   )
 end
 
-# Derive every object's UUID from its place in the project, so regenerating
-# only changes the entries for files that were actually added or removed.
+# Derive every object's UUID from the project's contents, so regenerating an
+# unchanged tree writes an identical file. Adding or removing a file still
+# changes the UUIDs of the groups, phases and targets that contain it.
 # Twice: the first pass hashes the target dependency's proxy with the
 # targets' random UUIDs; the second hashes it with their settled ones.
 # Before the scheme, which records the targets' UUIDs.

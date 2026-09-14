@@ -3,13 +3,15 @@ import SwiftUI
 /// The day's strain on WHOOP's 0–21 scale, with its band.
 struct StrainRow: View {
     let strain: Double?
-    /// The day is still going, so the strain is a running total.
+    /// The scores belong to this morning.
     let isToday: Bool
+    /// The day's cycle is still open, so the strain is a running total.
+    let isInProgress: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             AdaptiveRow(alignment: .firstTextBaseline) {
-                Text(isToday ? "Strain today" : "Strain")
+                Text(isToday && isInProgress ? "Strain today" : "Strain")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
             } trailing: {
@@ -31,6 +33,6 @@ struct StrainRow: View {
     private func detail(for strain: Double) -> String {
         let band = StrainBand(strain: strain).label.lowercased()
         let maximum = StrainBand.scaleMaximum.formatted()
-        return isToday ? "of \(maximum) · \(band) so far" : "of \(maximum) · \(band)"
+        return isInProgress ? "of \(maximum) · \(band) so far" : "of \(maximum) · \(band)"
     }
 }

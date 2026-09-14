@@ -10,11 +10,12 @@ enum MetricHistory {
     /// Several metrics' histories from one read of the daily rows.
     static func points(_ db: GRDB.Database, metrics: [Metric], sinceDay: String?) throws -> [Metric: [MetricPoint]] {
         let rows = try AnalysisQueries.dailyMetrics(db, sinceDay: sinceDay)
+        let dates = try DayDates.load(db, sinceDay: sinceDay)
         var histories: [Metric: [MetricPoint]] = [:]
         for metric in metrics {
             let ranges = metric.hasNormalRange ? try AnalysisQueries.normalRanges(db, metric: metric, sinceDay: sinceDay) : [:]
             histories[metric] = rows.compactMap { row in
-                guard let value = row.value(for: metric), let date = RecordDAO.date(forDay: row.day) else { return nil }
+                guard let value = row.value(for: metric), let date = dates[row.day] else { return nil }
                 return MetricPoint(day: row.day, date: date, value: value, range: ranges[row.day])
             }
         }

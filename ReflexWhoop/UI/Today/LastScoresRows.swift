@@ -22,7 +22,6 @@ struct LastScoresRows: View {
     }
 
     private var scoredDay: String {
-        guard let date = RecordDAO.date(forDay: snapshot.metrics.day) else { return snapshot.metrics.day }
-        return date.formatted(.dateTime.day().month(.abbreviated).recordedDay())
+        snapshot.date?.formatted(.dateTime.day().month(.abbreviated)) ?? snapshot.metrics.day
     }
 }

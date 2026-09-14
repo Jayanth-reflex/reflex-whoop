@@ -27,10 +27,9 @@ struct ArchiveSummaryHeader: View {
     }
 
     private var span: String? {
-        guard let firstDay = archive.firstDay, let lastDay = archive.lastDay,
-              let first = RecordDAO.date(forDay: firstDay), let last = RecordDAO.date(forDay: lastDay) else { return nil }
-        let start = first.formatted(.dateTime.day().month(.wide).recordedDay())
-        let end = last.formatted(.dateTime.day().month(.wide).year().recordedDay())
+        guard let first = archive.firstDate, let last = archive.lastDate else { return nil }
+        let start = first.formatted(.dateTime.day().month(.wide))
+        let end = last.formatted(.dateTime.day().month(.wide).year())
         return "\(start) – \(end)"
     }
 }

@@ -15,7 +15,7 @@ struct UnusualDaySection: View {
             }
         } header: {
             HStack(alignment: .firstTextBaseline) {
-                SectionHeader(title: day.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).recordedDay()))
+                SectionHeader(title: day.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))
                 Spacer()
                 if day.illnessSignals != nil {
                     Text("Possible illness")

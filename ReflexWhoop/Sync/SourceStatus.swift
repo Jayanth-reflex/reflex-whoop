@@ -36,8 +36,9 @@ enum SourceState: Equatable {
 /// is currently reachable. This is the number that stays true when everything
 /// else stops working.
 struct ArchiveSummary: Equatable {
-    let firstDay: String?
-    let lastDay: String?
+    /// The first and last stored days, as `DayDates` shows them.
+    let firstDate: Date?
+    let lastDate: Date?
     let dayCount: Int
     let bleSessionCount: Int
     let bleSampleCount: Int
@@ -92,8 +93,8 @@ enum SourceStatus {
         let sampleCount = try Int.fetchOne(db, sql: "SELECT COALESCE(SUM(hr_sample_count), 0) FROM session_metrics") ?? 0
 
         return ArchiveSummary(
-            firstDay: dayRow?["first_day"],
-            lastDay: dayRow?["last_day"],
+            firstDate: try (dayRow?["first_day"] as String?).flatMap { try DayDates.date(db, day: $0) },
+            lastDate: try (dayRow?["last_day"] as String?).flatMap { try DayDates.date(db, day: $0) },
             dayCount: dayRow?["n"] ?? 0,
             bleSessionCount: sessionCount,
             bleSampleCount: sampleCount

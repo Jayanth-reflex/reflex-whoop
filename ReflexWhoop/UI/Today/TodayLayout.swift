@@ -17,4 +17,15 @@ enum TodayLayout: Equatable {
         if hasScores { return .scores }
         return hasBandHistory ? .band(membershipEnded: false) : .empty
     }
+
+    /// What `.empty` says, from where the WHOOP account stands. Connected but
+    /// not yet synced is waiting, not missing.
+    static func emptyDescription(whoop: SourceState) -> String {
+        switch whoop {
+        case .notConfigured: "Connect your WHOOP account in Archive, or record from your band."
+        case .active, .unreachable: "Your WHOOP history appears here as soon as it arrives."
+        case .unauthorized: "Sign in to your WHOOP account in Archive, or record from your band."
+        case .inactive: "WHOOP isn't sending new data. Record from your band to see your heart rate here."
+        }
+    }
 }

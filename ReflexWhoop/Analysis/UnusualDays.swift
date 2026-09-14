@@ -14,8 +14,9 @@ enum UnusualDays {
     /// Newest first.
     static func load(_ db: GRDB.Database, sinceDay: String?) throws -> [UnusualDay] {
         let byDay = Dictionary(grouping: try AnalysisQueries.anomalies(db, sinceDay: sinceDay, limit: nil), by: \.day)
+        let dates = try DayDates.load(db, sinceDay: sinceDay)
         return try byDay.keys.sorted(by: >).compactMap { day in
-            guard let date = RecordDAO.date(forDay: day), let anomalies = byDay[day] else { return nil }
+            guard let date = dates[day] ?? DayDates.keyDate(day, calendar: .current), let anomalies = byDay[day] else { return nil }
             let metrics = try DailyMetricsRow.fetchOne(db, sql: "SELECT * FROM daily_metrics WHERE day = ?", arguments: [day])
             let ranges = try AnalysisQueries.normalRanges(db, day: day)
             let readings = anomalies.compactMap { anomaly -> UnusualReading? in

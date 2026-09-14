@@ -13,7 +13,7 @@ struct UnusualPointsSection: View {
                         Text("\(metric.formattedWithUnit(point.value)) · \(point.status.label.lowercased())")
                             .foregroundStyle(Color.sunstone)
                     } label: {
-                        Text(point.date, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated).recordedDay())
+                        Text(point.date, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))
                     }
                 }
             } header: {

@@ -13,8 +13,9 @@ struct MetricHistoryCard: View {
             MetricHistoryChart(points: points, metric: metric)
                 .frame(height: 210)
 
-            HStack(spacing: 14) {
-                if metric.hasNormalRange {
+            // Without a normal range there's no band to key, and no day can be unusual.
+            if metric.hasNormalRange {
+                HStack(spacing: 14) {
                     Label {
                         Text("Your normal")
                     } icon: {
@@ -22,12 +23,12 @@ struct MetricHistoryCard: View {
                             .fill(contrast == .increased ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.quaternary))
                             .frame(width: 16, height: 8)
                     }
+                    StatusLabel(text: metric.section == .overnight ? "Unusual night" : "Unusual day", tint: Color.sunstone)
                 }
-                StatusLabel(text: metric.section == .overnight ? "Unusual night" : "Unusual day", tint: Color.sunstone)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .accessibilityHidden(true)
 
             Divider()
 

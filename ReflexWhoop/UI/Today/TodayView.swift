@@ -1,3 +1,4 @@
+import GRDB
 import SwiftUI
 
 /// Today: WHOOP's scores for the latest day it scored, or the band's heart
@@ -25,43 +26,45 @@ struct TodayView: View {
             .navigationDestination(for: Metric.self) { metric in
                 MetricDetailView(metric: metric)
             }
-            .task { await load() }
+            .task { await observe() }
             .refreshable { await refresh() }
         }
     }
 
     private var subtitle: Text {
-        if content?.layout == .scores, let day = content?.snapshot?.metrics.day, let date = RecordDAO.date(forDay: day) {
-            Text(date, format: .dateTime.weekday(.wide).day().month(.wide).recordedDay())
+        if content?.layout == .scores, let date = content?.snapshot?.date {
+            Text(date, format: .dateTime.weekday(.wide).day().month(.wide))
         } else {
             Text(Date.now, format: .dateTime.weekday(.wide).day().month(.wide))
         }
     }
 
-    private func load() async {
-        let sources = await container.sourceSnapshot()
-        let startOfToday = Calendar.current.startOfDay(for: .now)
+    /// Follows the database for as long as Today is on screen, so a sync that
+    /// finishes later (the first one, a background one) shows up by itself.
+    private func observe() async {
+        let readings = TodayReadings.observation(since: Calendar.current.startOfDay(for: .now))
         do {
-            let (snapshot, heartRate) = try await container.database.dbPool.read { db in
-                (try TodaySnapshot.load(db), try RecordingQueries.heartRate(db, since: startOfToday))
+            for try await reading in readings.values(in: container.database.dbPool) {
+                content = TodayContent(snapshot: reading.snapshot, sources: await container.sourceSnapshot(), heartRateToday: reading.heartRateToday)
+                loadError = nil
             }
-            content = TodayContent(snapshot: snapshot, sources: sources, heartRateToday: heartRate)
-            loadError = nil
         } catch {
             loadError = error.localizedDescription
         }
     }
 
-    /// Pull to refresh brings in new WHOOP data first, when an account is connected.
+    /// Pull to refresh brings in new WHOOP data, when an account is connected.
+    /// What arrives reaches the screen through `observe()`.
     private func refresh() async {
-        if let engine = await container.syncEngine() {
-            do {
-                _ = try await engine.syncNow(trigger: "pull")
-                syncError = nil
-            } catch {
-                syncError = "Couldn't sync with WHOOP: \(error.localizedDescription)"
-            }
+        guard let engine = await container.syncEngine() else {
+            syncError = nil
+            return
         }
-        await load()
+        do {
+            _ = try await engine.syncNow(trigger: "pull")
+            syncError = nil
+        } catch {
+            syncError = "Couldn't sync with WHOOP: \(error.localizedDescription)"
+        }
     }
 }

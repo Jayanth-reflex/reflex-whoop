@@ -17,7 +17,7 @@ struct TodayLayoutView: View {
             ContentUnavailableView(
                 "Nothing to show yet",
                 systemImage: "sun.max",
-                description: Text("Connect your WHOOP account in Archive, or record from your band.").foregroundStyle(.secondary)
+                description: Text(TodayLayout.emptyDescription(whoop: content.sources.whoop)).foregroundStyle(.secondary)
             )
         }
     }

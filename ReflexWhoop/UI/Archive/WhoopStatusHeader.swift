@@ -33,8 +33,8 @@ struct WhoopStatusHeader: View {
         case .unreachable:
             "The last sync didn't get through. Your history here is unaffected."
         case .inactive:
-            if let lastDay = archive?.lastDay, let date = RecordDAO.date(forDay: lastDay) {
-                "WHOOP stopped sending new data after \(date.formatted(.dateTime.day().month(.wide).recordedDay()))."
+            if let lastDate = archive?.lastDate {
+                "WHOOP stopped sending new data after \(lastDate.formatted(.dateTime.day().month(.wide)))."
             } else {
                 "WHOOP has stopped sending new data."
             }

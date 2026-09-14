@@ -104,9 +104,10 @@ struct LatestSleepDetail: Decodable, FetchableRecord {
         Date(timeIntervalSince1970: TimeInterval(start))..<Date(timeIntervalSince1970: TimeInterval(end))
     }
 
-    /// Ended today or yesterday, so "last night" is true of it.
+    /// Ended today, so "last night" is true of it. By tomorrow a sleep that
+    /// ended this morning is the night before last.
     func isFromLastNight(calendar: Calendar = .current, now: Date = .now) -> Bool {
-        calendar.relativeDay(of: interval.upperBound, now: now) != nil
+        calendar.isDate(interval.upperBound, inSameDayAs: now)
     }
 
     /// Light + deep + REM. `nil` when WHOOP sent no stage totals.
@@ -119,6 +120,22 @@ struct LatestSleepDetail: Decodable, FetchableRecord {
 enum AnalysisQueries {
     static func latestDailyMetrics(_ db: GRDB.Database) throws -> DailyMetricsRow? {
         try DailyMetricsRow.fetchOne(db, sql: "SELECT * FROM daily_metrics ORDER BY day DESC LIMIT 1")
+    }
+
+    /// Whether the cycle `day` was scored from is still open, so its strain
+    /// is a running total. The same cycle `DailyMetricsBuilder` reads: the
+    /// first to start within the key's UTC day.
+    static func cycleIsInProgress(_ db: GRDB.Database, day: String) throws -> Bool {
+        try Bool.fetchOne(
+            db,
+            sql: """
+            SELECT "end" IS NULL FROM cycles
+            WHERE start >= CAST(strftime('%s', ?) AS INTEGER) AND start < CAST(strftime('%s', ?) AS INTEGER) + 86400
+            ORDER BY start ASC
+            LIMIT 1
+            """,
+            arguments: [day, day]
+        ) ?? false
     }
 
     static func dailyMetrics(_ db: GRDB.Database, sinceDay: String?) throws -> [DailyMetricsRow] {

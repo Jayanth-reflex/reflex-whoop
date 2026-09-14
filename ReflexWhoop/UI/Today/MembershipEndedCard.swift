@@ -22,8 +22,8 @@ struct MembershipEndedCard: View {
     }
 
     private var detail: Text {
-        if let lastDay = archive.lastDay, let date = RecordDAO.date(forDay: lastDay) {
-            Text("Recovery, sleep and strain stopped after \(date, format: .dateTime.day().month(.wide).recordedDay()). Your band still records heart rate, and all ^[\(archive.dayCount) day](inflect: true) before that stay here.")
+        if let lastDate = archive.lastDate {
+            Text("Recovery, sleep and strain stopped after \(lastDate, format: .dateTime.day().month(.wide)). Your band still records heart rate, and all ^[\(archive.dayCount) day](inflect: true) before that stay here.")
         } else {
             Text("Recovery, sleep and strain have stopped. Your band still records heart rate.")
         }
