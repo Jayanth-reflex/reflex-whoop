@@ -29,9 +29,10 @@ struct SignalDetailsView: View {
                     SectionFooter(text: "Heart rate is one of several signals the band sends, so a low share of readable packets is expected. It isn't a quality problem.")
                 }
 
-                if !recorder.packetTypeCounts.sortedByCount.isEmpty {
+                let packetTypes = recorder.packetTypeCounts.sortedByCount
+                if !packetTypes.isEmpty {
                     Section {
-                        ForEach(recorder.packetTypeCounts.sortedByCount, id: \.packetType) { entry in
+                        ForEach(packetTypes, id: \.packetType) { entry in
                             LabeledContent {
                                 Text(entry.count.formatted())
                                     .monospacedDigit()

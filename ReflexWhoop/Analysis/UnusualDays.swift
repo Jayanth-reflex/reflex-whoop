@@ -2,6 +2,15 @@ import Foundation
 import GRDB
 
 enum UnusualDays {
+    /// How many days `load` would return, without reading each day's values.
+    static func count(_ db: GRDB.Database, sinceDay: String?) throws -> Int {
+        try Int.fetchOne(
+            db,
+            sql: "SELECT COUNT(DISTINCT day) FROM anomalies WHERE (? IS NULL OR day >= ?)",
+            arguments: [sinceDay, sinceDay]
+        ) ?? 0
+    }
+
     /// Newest first.
     static func load(_ db: GRDB.Database, sinceDay: String?) throws -> [UnusualDay] {
         let byDay = Dictionary(grouping: try AnalysisQueries.anomalies(db, sinceDay: sinceDay, limit: nil), by: \.day)

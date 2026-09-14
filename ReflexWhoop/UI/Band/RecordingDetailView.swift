@@ -21,7 +21,7 @@ struct RecordingDetailView: View {
                 if let average = recording.averageBpm, let lowest = recording.lowestBpm, let highest = recording.highestBpm {
                     Section {
                         StatRow {
-                            StatValue(title: "Average", value: average.formatted(.number.precision(.fractionLength(0))), unit: "bpm")
+                            StatValue(title: "Average", value: average.formatted(.bpm), unit: "bpm")
                             StatValue(title: "Lowest", value: lowest.formatted(), unit: "bpm")
                             StatValue(title: "Highest", value: highest.formatted(), unit: "bpm")
                         }

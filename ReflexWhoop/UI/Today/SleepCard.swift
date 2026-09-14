@@ -8,7 +8,7 @@ struct SleepCard: View {
         VStack(alignment: .leading, spacing: 14) {
             AdaptiveRow(alignment: .firstTextBaseline) {
                 if let asleep = sleep.asleepMilli {
-                    let duration = Text(Duration.milliseconds(asleep), format: .units(allowed: [.hours, .minutes], width: .narrow))
+                    let duration = Text(Duration.milliseconds(asleep), format: .hoursMinutes)
                         .font(.title.weight(.semibold))
                     Text("\(duration) \(Text("asleep").foregroundStyle(.secondary))")
                 } else {

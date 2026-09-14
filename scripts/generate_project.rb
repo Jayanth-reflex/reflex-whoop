@@ -9,7 +9,6 @@
 # (installed with `gem install --user-install xcodeproj`, no sudo needed).
 
 require 'xcodeproj'
-require 'securerandom'
 
 ROOT = File.expand_path('..', __dir__)
 PROJECT_PATH = File.join(ROOT, 'ReflexWhoop.xcodeproj')
@@ -139,6 +138,13 @@ test_target.build_configurations.each do |config|
     'CODE_SIGN_STYLE' => 'Automatic',
   )
 end
+
+# Derive every object's UUID from its place in the project, so regenerating
+# only changes the entries for files that were actually added or removed.
+# Twice: the first pass hashes the target dependency's proxy with the
+# targets' random UUIDs; the second hashes it with their settled ones.
+# Before the scheme, which records the targets' UUIDs.
+2.times { project.predictabilize_uuids }
 
 # ---------------------------------------------------------------------------
 # Scheme — shared so `xcodebuild -scheme ReflexWhoop test` works without first

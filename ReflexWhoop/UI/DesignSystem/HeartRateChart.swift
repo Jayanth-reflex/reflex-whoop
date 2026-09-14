@@ -44,6 +44,6 @@ struct HeartRateChart: View {
 
     private var rangeDescription: String {
         guard let lowest = bpm.min(), let highest = bpm.max() else { return "No readings" }
-        return "\(lowest.formatted(.number.precision(.fractionLength(0))))–\(highest.formatted(.number.precision(.fractionLength(0)))) bpm"
+        return "\(lowest.formatted(.bpm))–\(highest.formatted(.bpm)) bpm"
     }
 }

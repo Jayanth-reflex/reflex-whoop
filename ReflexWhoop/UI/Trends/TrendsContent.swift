@@ -11,7 +11,7 @@ struct TrendsContent {
         let firstDay = range.firstDay(endingOn: now)
         return TrendsContent(
             histories: try MetricHistory.points(db, metrics: Metric.allCases, sinceDay: firstDay),
-            unusualDayCount: try UnusualDays.load(db, sinceDay: firstDay).count,
+            unusualDayCount: try UnusualDays.count(db, sinceDay: firstDay),
             patterns: PatternsSummary(rows: try AnalysisQueries.correlations(db))
         )
     }

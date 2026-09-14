@@ -7,7 +7,7 @@ struct RecordingRow: View {
     var body: some View {
         LabeledContent {
             if let average = recording.averageBpm {
-                Text("\(average.formatted(.number.precision(.fractionLength(0)))) bpm avg")
+                Text("\(average.formatted(.bpm)) bpm avg")
                     .monospacedDigit()
             }
         } label: {

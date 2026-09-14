@@ -27,7 +27,7 @@ struct TodayBandList: View {
                     HeartRateTodayCard(span: content.heartRateToday)
                     if !content.heartRateToday.readings.isEmpty {
                         LabeledContent("Recorded") {
-                            Text(Duration.seconds(content.heartRateToday.readings.count * 60), format: .units(allowed: [.hours, .minutes], width: .narrow))
+                            Text(Duration.seconds(content.heartRateToday.readings.count * 60), format: .hoursMinutes)
                         }
                     }
                 } header: {

@@ -19,7 +19,7 @@ struct SleepStageBar: View {
             LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
                 ForEach(recordedStages, id: \.self) { stage in
                     LabeledContent {
-                        Text(Duration.milliseconds(milli(of: stage)), format: .units(allowed: [.hours, .minutes], width: .narrow))
+                        Text(Duration.milliseconds(milli(of: stage)), format: .hoursMinutes)
                             .monospacedDigit()
                     } label: {
                         StatusLabel(text: stage.label, tint: stage.tint)

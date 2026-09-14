@@ -16,6 +16,6 @@ enum RecordingFormat {
     static func length(of recording: RecordingSummary) -> String {
         guard let span = recording.span else { return "Nothing captured" }
         guard span >= 60 else { return "Under a minute" }
-        return Duration.seconds(span).formatted(.units(allowed: [.hours, .minutes], width: .narrow))
+        return Duration.seconds(span).formatted(.hoursMinutes)
     }
 }

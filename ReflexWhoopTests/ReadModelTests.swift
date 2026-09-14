@@ -164,6 +164,20 @@ final class ReadModelTests: XCTestCase {
         XCTAssertEqual(try database.dbPool.read { try UnusualDays.load($0, sinceDay: nil) }.count, 120)
     }
 
+    /// Trends shows the count without building each day.
+    func testUnusualDayCountMatchesTheListInEveryRange() throws {
+        try insertAnomaly(day: "2026-09-09", kind: .singleMetricExcursion, metric: "hrv_rmssd_milli")
+        try insertAnomaly(day: "2026-09-09", kind: .illnessFlag, metric: nil)
+        try insertAnomaly(day: "2026-08-30", kind: .illnessFlag, metric: nil)
+
+        for sinceDay in [nil, "2026-09-01", "2026-09-10"] {
+            let (count, days) = try database.dbPool.read { db in
+                (try UnusualDays.count(db, sinceDay: sinceDay), try UnusualDays.load(db, sinceDay: sinceDay))
+            }
+            XCTAssertEqual(count, days.count, "since \(sinceDay ?? "the start")")
+        }
+    }
+
     func testUnusualDaysCarryTheIllnessSignals() throws {
         try insertAnomaly(
             day: "2026-08-30",

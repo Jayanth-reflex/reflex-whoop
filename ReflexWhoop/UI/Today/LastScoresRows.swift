@@ -16,7 +16,7 @@ struct LastScoresRows: View {
         }
         if let sleep = snapshot.sleep, let asleep = sleep.asleepMilli {
             LabeledContent("Sleep") {
-                Text("Last: \(Duration.milliseconds(asleep), format: .units(allowed: [.hours, .minutes], width: .narrow)) on \(sleep.interval.upperBound, format: .dateTime.day().month(.abbreviated))")
+                Text("Last: \(Duration.milliseconds(asleep), format: .hoursMinutes) on \(sleep.interval.upperBound, format: .dateTime.day().month(.abbreviated))")
             }
         }
     }

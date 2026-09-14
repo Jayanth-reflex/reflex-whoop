@@ -14,13 +14,7 @@ struct TrendsView: View {
             List {
                 Group {
                     Section {
-                        Picker("Range", selection: $range) {
-                            ForEach(HistoryRange.allCases) { range in
-                                Text(range.label).tag(range)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
+                        HistoryRangePicker(selection: $range)
                     }
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())

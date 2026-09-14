@@ -9,9 +9,9 @@ struct HeartRateTodayCard: View {
         if let average = span.averageBpm, let lowest = span.lowestBpm, let highest = span.highestBpm {
             VStack(alignment: .leading, spacing: 12) {
                 StatRow {
-                    StatValue(title: "Average", value: bpm(average), unit: "bpm")
-                    StatValue(title: "Lowest", value: bpm(lowest), unit: "bpm")
-                    StatValue(title: "Highest", value: bpm(highest), unit: "bpm")
+                    StatValue(title: "Average", value: average.formatted(.bpm), unit: "bpm")
+                    StatValue(title: "Lowest", value: lowest.formatted(.bpm), unit: "bpm")
+                    StatValue(title: "Highest", value: highest.formatted(.bpm), unit: "bpm")
                 }
                 HeartRateChart(readings: span.readings, maximumGap: 3 * 60)
                     .frame(height: 170)
@@ -27,9 +27,5 @@ struct HeartRateTodayCard: View {
                 description: Text("Turn on Keep recording in Band to record from your band.").foregroundStyle(.secondary)
             )
         }
-    }
-
-    private func bpm(_ value: Double) -> String {
-        value.formatted(.number.precision(.fractionLength(0)))
     }
 }

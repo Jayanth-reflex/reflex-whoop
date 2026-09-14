@@ -6,6 +6,8 @@ struct MetricHistoryCard: View {
     let points: [MetricPoint]
     let summary: MetricHistorySummary
 
+    @Environment(\.colorSchemeContrast) private var contrast
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             MetricHistoryChart(points: points, metric: metric)
@@ -17,7 +19,7 @@ struct MetricHistoryCard: View {
                         Text("Your normal")
                     } icon: {
                         RoundedRectangle(cornerRadius: 3)
-                            .fill(.quaternary)
+                            .fill(contrast == .increased ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.quaternary))
                             .frame(width: 16, height: 8)
                     }
                 }
