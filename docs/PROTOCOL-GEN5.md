@@ -1,431 +1,233 @@
-# WHOOP 5.0 (Gen 5) BLE protocol — discovery spike findings
+# WHOOP 5.0 (Gen 5) Bluetooth protocol
 
-Source: a real ~10-minute worn session against the user's own WHOOP 5.0 band and
-account, captured via `SpikeRecorder` (`ReflexWhoop/Ble/`) and analyzed offline
-from the raw `ingest_inbox` rows pulled off-device. 711 raw BLE notifications
-were logged; every finding below is derived from those bytes, not guesswork
-layered on top of assumptions. Session id `2DED0E3A-1CC7-4DEA-BD6E-98F78D1A19EC`,
-recorded 2026-09-07.
+What ReflexWhoop knows about the WHOOP 5.0 band's Bluetooth protocol, how sure it is
+of each fact, and the rails that keep the app from ever disturbing the band. WHOOP
+publishes none of this. Everything marked confirmed was checked against raw frames
+captured from a worn band and kept in `ingest_inbox`.
 
-**Read the safety section near the bottom before running another session.**
+**Read [Safety rails](#safety-rails) before changing anything in `ReflexWhoop/Ble/`.**
 
-## Envelope — CONFIRMED, high confidence
+## Safety rails
 
-The Gen 5 envelope is **not** what `docs/design.md`'s diff table (and the first
-cut of `Framing.swift`) guessed. The real layout, verified by CRC match on
-**100% of all 711 captured frames across all three notify characteristics**
-(zero marker mismatches, zero CRC-16 failures, zero CRC-32 failures):
+The band keeps a flash read cursor that is shared with the official WHOOP app and
+persists across connections. Moving it could starve the official app and corrupt real
+recovery and strain scores. So the app is **live-stream only and read-only by
+construction**:
 
-```
-byte 0      0xAA                        marker
-byte 1      0x01                        version (constant in every sample)
-bytes 2-3   u16 LE  len                 = size of (field + crc16 + inner) = innerLen + 4
-bytes 4-5   u16 LE  field               constant 0x0001 in every sample — purpose unconfirmed
-bytes 6-7   u16 LE  crc16               CRC-16/MODBUS over bytes[0:6]
-bytes 8..   inner   (len - 4 bytes)     [packet_type][seq][opcode/event_id][body...]
-last 4      u32 LE  crc32               CRC-32 (IEEE 802.3) over the inner bytes only
-```
+- **One choke point.** `OpcodeAllowlist.assertAllowed` runs on the opcode byte
+  immediately before every `BandConnection.send`. Nothing else can originate a write.
+  `OpcodeAllowlistTests` pins both tables below.
+- **Forbidden opcodes can't be sent**, and no flag changes that. They're named only in
+  `Ble.ForbiddenOpcode`, so the test can prove each one is rejected.
+- **Never ACK history.** A `0x2F` or `0x31` packet is logged and never acknowledged,
+  whatever the app thinks it asked for. No ACK, no cursor movement.
+- **No write path to any band setting**, alarm or clock.
+- **Only decode a field once captured frames confirm it.** Never fabricate a value.
 
-Total frame length = `8 + innerLen + 4`. There is **no padding to a multiple of
-4** — that was a Gen 4 assumption that doesn't hold here; `len` and the frame
-length are exact byte counts.
+Allowed:
 
-This was verified by brute-force search over every `(range, checksum-position)`
-combination against the 14 near-identical 20-byte frames on
-`fd4b0003`(varying inner bytes, constant header) — exactly one range
-(`bytes[8:16]`, i.e. the inner payload) produced a CRC-32 match against the
-trailing 4 bytes for every sample, and the predicted total-length formula
-(`8 + len-4 + 4`) matched the actual byte count of every one of the 711 frames,
-including the one 84-byte HELLO response and the dense 124-byte data-channel
-frames. This is about as confirmed as reverse-engineering gets without the
-firmware source.
+| Opcode | Command | Why it's safe |
+|---|---|---|
+| `0x23` | `GET_HELLO_HARVARD` | read-only identity, battery, wrist |
+| `0x1A` | `GET_BATTERY_LEVEL` | read-only (the standard `0x180F` battery characteristic always reports 100%) |
+| `0x22` | `GET_DATA_RANGE` | read-only backlog window query; doesn't move the cursor |
+| `0x03` | `TOGGLE_REALTIME_HR` | live stream toggle, no flash access |
+| `0x3F` | `SEND_R10_R11_REALTIME` | live HR and IMU |
+| `0x6A` | `TOGGLE_IMU_MODE` | live IMU |
+| `0x6B` | `ENABLE_OPTICAL_DATA` | wrist-gated optical, live only |
+| `0x6C` | `TOGGLE_OPTICAL_MODE` | live optical |
 
-**Not yet observed / unconfirmed:** whether `field` ever takes a value other
-than 1, and what it means when it does. Every frame in this session — commands,
-responses, events, and the historical burst — carried `field = 1`.
+Permanently forbidden:
 
-**No reassembly was needed this session.** All 711 notifications arrived as
-complete, self-contained frames (largest inner payload seen: 112 bytes) —
-CoreBluetooth's negotiated MTU was large enough that nothing fragmented.
-`FrameReassembler`'s length-based resync logic is untested against a real
-fragmented frame; keep it, since R21 (~1244 B) and r22 will almost certainly
-fragment, but treat it as unconfirmed until a session actually exercises it.
+| Opcode | Command | Why |
+|---|---|---|
+| `0x16` | `SEND_HISTORICAL_DATA` | starts a flash drain |
+| `0x17` | `HISTORICAL_DATA_RESULT` | the ACK that advances the shared cursor |
+| `0x21` | `SET_READ_POINTER` | moves the shared cursor |
+| `0x14` | `ABORT_HISTORICAL_TRANSMITS` | only meaningful while draining |
+| `0x9A` | `TOGGLE_PERSISTENT_R21` | forces optical on and leaves the LED stuck on |
+| `0x1D` | `REBOOT_STRAP` | hard reset |
+| `0x0A` | `SET_CLOCK` | writes the band's real-time clock |
 
-`Framing.swift`/`Gen5Envelope` has been corrected to match this confirmed
-layout (see the file's doc comment and `FramingTests.swift`).
+After any session that shows unusual band activity, open the official WHOOP app and
+confirm it still syncs and its scores are intact. Every such check so far has passed.
 
-## Inner packet_type byte — confirmed values, revised meanings
+## Connection
 
-The inner packet type byte (`inner[0]`) took five distinct values this
-session. **Gen 4's packet-type numbering (which `docs/design.md` inherited)
-does not appear to hold for Gen 5** — see the safety section for why this
-matters.
+| | Gen 4 (published by OpenStrap) | **Gen 5 (WHOOP 5.0)** |
+|---|---|---|
+| Service | `61080001-8d6d-82b8-614a-1c8cb0f8dcc6` | **`fd4b0001-cce1-4033-93ce-002d5875f58a`** |
+| Length check | CRC-8 | **CRC-16/MODBUS over the header** |
+| Padding | inner padded to a multiple of 4 | **none** |
+| Writes | either type | **write-with-response only; write-without-response is a no-op** |
+| Extra characteristic | — | **`fd4b0007`** |
 
-| Value | Count | Where seen | What it actually was (from evidence) |
-|---|---|---|---|
-| `0x24` | 15 | `fd4b0003` (command-response), `fd4b0004` (events) | Generic response/status frame — matches design doc's Gen4-derived "response" label, this one's consistent. |
-| `0x2F` | 640 | `fd4b0005` (data) | **A historical-data burst**, not a live sensor stream — see below. All in a ~4-second window at connection start. |
-| `0x30` | 2 | `fd4b0005` | Event frame — consistent with design doc's Gen4-derived "event" label. Too few samples this session to map specific event IDs. |
-| `0x31` | 25 | `fd4b0005` | Unclear — small (12-40 byte) frames interleaved with the `0x2F` burst and after it. Design doc calls this "sync marker"; plausible given the timing, not confirmed field-by-field. |
-| `0x32` | 28 | `fd4b0005` | **Plain-ASCII firmware debug log lines**, not a sensor or command-response record at all. This is what makes the rest of this document possible — see below. |
+| Characteristic | Direction | Carries |
+|---|---|---|
+| `fd4b0002` | write | commands |
+| `fd4b0003` | notify | command responses |
+| `fd4b0004` | notify | events |
+| `fd4b0005` | notify | data |
+| `fd4b0007` | notify | CBOR device metadata, not envelope-framed |
 
-## The historical-burst debug log — the single most important finding
+**Bonding.** Gen 5 needs authenticated pairing. The phone already holds a bond from
+the official WHOOP app, and CoreBluetooth reuses it; the official app can stay open.
 
-`0x32` frames are not binary telemetry — decoding `inner[16:]` as ASCII and
-splitting on the first NUL byte recovers literal firmware log lines,
-reassembled here in order:
+**Writes are serialized.** `BandConnection.send` waits for `didWriteValueFor` (or a
+3-second timeout) before the next write. Firing writes back-to-back lost the first
+two commands ([session 3](#session-3-2026-09-07-a-write-ordering-bug)).
 
-```
-Send Historical Data
-8, 642658720: BLE: hist transfer start response ack, start burst
-8, 6426612...: BLE: History burst success. Trim: 0x00000002:0001c4e5 (2:115941)
-8, 642661630: BLE: History burst success. Trim: 0x00000002:0001c4e9 (2:115945)
-... (repeats, Trim counter monotonically increasing: c4e5 → c4e9 → c4ed → ... → c50b)
-8, 642665000: BLE: Historical Dump Complete
-8, 642665000: BLE: Pull stats: Data: 598, Events: 27, Bytes: 77132, Secs: ...6.280, Brate: 12282.2, Prate: 99.5
-8, 643034...: BLE_CMD: Invalid packet, error = 2   (×4)
-8, 643259...: BLE_CMD: Command Get Data Range
-```
+## Envelope (confirmed)
 
-Reading this against what this app actually did:
-
-- **A real historical data transfer happened.** "Trim" is exactly the kind of
-  language you'd expect for a flash ring-buffer read cursor advancing as data
-  is consumed — the shared cursor `docs/design.md`'s safety rails are about.
-  598 records + 27 events, 77,132 bytes, moved in about 4 seconds.
-- **This app did not command it.** `OpcodeAllowlist.assertAllowed` is called
-  on the literal opcode byte before every `BandConnection.send`, and
-  `SpikeRecorder.beginSafeCommandSequence()` only ever calls it with
-  `getHelloHarvard (0x23)`, `getBatteryLevel (0x1A)`, `toggleRealtimeHR (0x03)`,
-  and `sendR10R11Realtime (0x3F)` — never `0x16`/`0x17`/`0x21`. This is
-  enforced structurally and covered by `OpcodeAllowlistTests`, not a claim
-  resting on this session's evidence.
-- **This app's actual commands never even parsed.** The four
-  `"BLE_CMD: Invalid packet, error = 2"` lines line up exactly with the four
-  opcodes above — because they were built with the *old, wrong* envelope
-  hypothesis (7-byte header, 1-byte field) before this spike corrected it.
-  The band's own CRC check rejected all four as malformed and did nothing
-  with them. Nothing this app asked for ever took effect this session —
-  the HR/IMU realtime stream was never actually enabled, which is also why
-  no live sensor data appears anywhere in this capture.
-- **The burst started immediately on connection, before any of this app's
-  (malformed, later-rejected) commands could plausibly have reached the
-  band.** The most likely explanation is that Gen 5 firmware performs some
-  form of automatic catch-up sync on a new central connecting — independent
-  of anything this app requested — though it's also possible this reflects
-  the official WHOOP app's own normal, legitimate, already-scheduled sync
-  happening concurrently in the background and simply being visible on a
-  characteristic this app happened to be subscribed to (`GET_DATA_RANGE`
-  appearing in the log with no matching outbound call from this app supports
-  that reading). Both explanations are consistent with the evidence; neither
-  implicates anything this codebase sent.
-
-**Practical read:** nothing here shows this app caused, requested, or
-acknowledged any historical transfer. But real flash-cursor activity was
-observed on a real band during a session this app initiated, and the design
-doc's own verification plan calls for exactly this situation to be checked
-against the official app before trusting it further.
-
-## Confidence summary
-
-| Claim | Confidence |
-|---|---|
-| Envelope structure (8-byte header, CRC-16 over header, CRC-32 over inner, exact-length framing) | **Confirmed** — 711/711 frames, zero exceptions |
-| `field` is a fixed `0x0001` | Confirmed for this session; unconfirmed whether it ever varies |
-| `0x24` = response | Consistent with design doc, low sample count (15) |
-| `0x2F` = historical data (not "realtime raw" as design doc assumed) | High confidence — matches debug log content directly |
-| `0x30` = event | Consistent with design doc; only 2 samples |
-| `0x31` = sync marker | Plausible from timing/position; not confirmed field-by-field |
-| `0x32` = ASCII firmware debug log | **Confirmed** — directly decoded, human-readable |
-| A historical burst happened and wasn't commanded by this app | High confidence (structural allowlist proof + all 4 real commands independently confirmed rejected) |
-| Whether the burst was band-automatic or the official app's concurrent traffic | Unresolved — both explanations fit the evidence |
-| R10/R21/r22 live sensor record layouts | **Not captured.** The commands meant to enable them never parsed (see above); nothing in this session is a live sensor sample. A repeat session with the now-fixed envelope is needed before any of that decoding can start. |
-
-## Safety check required before the next session
-
-Per `docs/design.md`'s BLE verification plan (item 9): **open the official
-WHOOP app now and confirm it syncs normally and recovery/strain scores are
-intact**, given the real historical-transfer activity documented above. This
-app's own commands are independently confirmed to have had no effect this
-session (rejected at the CRC layer), but the transfer itself was real and
-this is the check the design doc calls for whenever that's true — do it
-before running another live session, not just as routine.
-
-**Checked 2026-09-07: official app synced normally, scores looked normal.**
-Cleared to run another spike session with the now-fixed envelope.
-
-## Next steps once the app/scores check out
-
-1. Re-run the spike now that `Framing.swift` sends correctly-formed commands
-   — `getHelloHarvard`/`getBatteryLevel` should get real `0x24` responses
-   instead of `error = 2`, and `toggleRealtimeHR`/`sendR10R11Realtime` should
-   actually enable a live stream this time.
-2. With a real live stream running, capture and map the R10/R21/r22 record
-   layouts per `docs/design.md`'s hunt method (correlate HR byte against the
-   WHOOP app's live number, RR arrays via plausible 600-1400 ms i16 runs,
-   accel via f32 triples near 1 g at rest).
-3. Confirm whether a second `0x2F` burst happens on every reconnect
-   (supports "automatic on connect") or only sometimes (supports "coincided
-   with the official app's own sync").
-
----
-
-## Session 2 (2026-09-07, three back-to-back connections, ~92 minutes total)
-
-7,343 raw frames across three separate sessions/reconnects (the app was
-restarted between them), captured with the now-fixed envelope. Every one of
-the 7,343 frames parsed with a valid marker, exact length, valid CRC-16, and
-valid CRC-32 — the envelope fix from session 1 holds completely.
-
-**This app's commands parsed this time.** All 156 `fd4b0003` responses this
-session are `0x24` (real responses), zero `"Invalid packet"` errors — the
-envelope fix worked, and `toggleRealtimeHR`/`sendR10R11Realtime` actually took
-effect.
-
-### Correction to session 1: `0x2F` is not historical-drain-specific
-
-Session 1 labeled `0x2F` "a historical-data burst" because it was adjacent to
-the `0x32` debug log describing one. This session's evidence narrows that:
-
-- `0x2F` frames from the very start of session 1 (debug-log-confirmed as part
-  of the historical dump) and `0x2F` frames from deep into session 3 (after
-  `sendR10R11Realtime` had been sent, parsed, and presumably taken effect) are
-  **byte-for-byte the same 112-byte structure** — same field layout, same
-  varying/constant byte positions. There is one record format, not two.
-- `0x2F` traffic didn't stop when the debug log said `"Historical Dump
-  Complete"` — it continued at a much lower, steady rate (roughly 1-3/s
-  rather than the initial ~160/s) for the following ~40 minutes, across
-  multiple reconnects, well past the point where the "dump" had supposedly
-  finished.
-
-Reading: **`0x2F` is a general-purpose sensor/data record wrapper used both
-for the initial small connect-time catch-up sync *and* for the live realtime
-stream once enabled** — not a record type exclusive to draining historical
-flash. The connect-time burst itself (598 records, 77 KB, ~4 seconds, per
-session 1's debug log) still reads as a small bounded catch-up, not an
-unbounded dump; it's just delivered using the same record format as
-everything else, which is a reasonable, unremarkable firmware design choice
-in hindsight, not evidence of anything unusual.
-
-It recurred on all three reconnects this session (new value: it happens
-**every** connection, not just occasionally) — consistent with "automatic
-per-connection catch-up sync," inconsistent with "coincidence with the
-official app." That question is now close to resolved in favor of
-band-automatic behavior, though still not certain.
-
-### `0x28` — realtime compact HR — CONFIRMED, high confidence
-
-409 frames, exactly 20 bytes of inner payload each, arriving at almost
-exactly 1 Hz during the live-stream portion of session 3 (once
-`sendR10R11Realtime`/`toggleRealtimeHR` had actually parsed). Byte-position
-analysis across all 409:
+Verified by CRC on every one of 711 frames in session 1 and 7,343 in session 2, with
+zero exceptions. Implemented in `Framing.swift` (`Gen5Envelope`).
 
 ```
-inner[0]      0x28              packet_type (constant)
-inner[1]      0x02              constant — subtype? unconfirmed
-inner[2]      varies, +1/frame  low byte of a monotonic counter (device
-                                 uptime or similar; does NOT match unix
-                                 received_at, so not a wall-clock timestamp)
-inner[3]      0xe2-0xe4         high byte of that same counter
-inner[4:6]    0x9e 0x6a         constant — unclear, possibly part of the
-                                 same counter or a session id
-inner[6:8]    0x28/0x70/0xb8,   unclear — three-valued, changes in sync
-              0x7c/0x7d/0x7e    with the counter rolling over a boundary
-inner[8]      76-94 (0x4c-0x5e) HEART RATE, bpm, direct u8, no scaling —
-                                 stayed in a normal light-activity range for
-                                 the whole capture. Physiologically the only
-                                 field in this record that fits.
-inner[9:20]   various           unmapped — likely signal-quality/motion/
-                                 skin-contact fields per docs/design.md's
-                                 general expectations for a compact-HR record,
-                                 not individually confirmed
+byte 0      0xAA        marker
+byte 1      0x01        version (constant so far)
+bytes 2-3   u16 LE len  = innerLen + 4
+bytes 4-5   u16 LE      field, constant 0x0001 so far; meaning unknown
+bytes 6-7   u16 LE      CRC-16/MODBUS over bytes 0-5
+bytes 8..   inner       [packet_type][seq][opcode | event_id | record_type][body…]
+last 4      u32 LE      CRC-32 (IEEE 802.3) over the inner bytes only
 ```
 
-This matches `docs/design.md`'s prediction exactly ("Compact HR also arrives
-on `0x28`") and is now implemented as `RealtimeHRDecoder` (`ReflexWhoop/Ble/`)
-— decoding only `inner[8]`, the one field with real evidence behind it. No
-other byte in this record is decoded; per the design doc, "only decode a
-field once the spike confirms it."
+Total frame length is `8 + innerLen + 4`, exactly.
 
-**Not yet cross-checked against the official app's own live HR number** —
-the design doc's real correctness bar for this field. Do that next: open the
-official app's live HR view during a session and compare.
+**Reassembly is length-based, never triggered on `0xAA`.** Sensor payloads contain
+`0xAA` constantly; resyncing on the marker is the most common way a decoder silently
+corrupts data. `FrameReassembler` implements this but has never met a real fragmented
+frame: every notification captured so far (largest inner payload 112 bytes) arrived
+whole. R21 and r22 records are expected to fragment.
 
-### `fd4b0007` — identified, not decoded
+## Packet types
 
-4 frames total across all three sessions (very low frequency — once per
-connection, roughly). These do **not** match the `Gen5Envelope` structure at
-all (no valid `0xAA` marker framing) — this characteristic carries a
-different wire format. The bytes are recognizable as **CBOR**: length-prefixed
-text strings decode directly to readable content, including what look like a
-build/version string (`"50.41.1.0"`), a hardware or codename string
-(`"WG50_r45"`), and an internal codename (`"maverick"`), alongside a long
-random-looking ID string. Read as one-time device/firmware metadata sent on
-connect, not sensor data. Not a priority to fully parse — noted here so a
-future pass doesn't have to rediscover that it isn't envelope-framed.
+| `inner[0]` | Meaning | Confidence |
+|---|---|---|
+| `0x23` | command (outgoing) | confirmed |
+| `0x24` | command response, and sometimes a carrier for firmware log text | confirmed as responses; see [session 4](#session-4-2026-09-07-firmware-log-strings) |
+| `0x28` | realtime compact heart rate, ~1 Hz | **confirmed, decoded** |
+| `0x2B` | R10 realtime raw (HR + IMU), per Gen 4 | never observed on Gen 5 |
+| `0x2F` | general sensor-record wrapper, used by the connect-time catch-up burst and the live stream alike | high |
+| `0x30` | event | consistent with Gen 4; few samples |
+| `0x31` | sync marker | plausible from timing, not confirmed field by field |
+| `0x32` | plain-ASCII firmware debug log lines | confirmed |
+| `0x33` / `0x34` | IMU, per Gen 4 | never observed on Gen 5 |
 
-### Updated confidence summary (supersedes session 1's table for `0x2F`)
+### `0x28`: realtime compact heart rate (confirmed)
 
-| Claim | Confidence |
-|---|---|
-| `0x2F` = general sensor-record wrapper (catch-up sync **and** live stream, same format) | High — same byte structure confirmed in both contexts |
-| `0x28` = realtime compact HR, `inner[8]` = bpm | High — physiologically plausible, stable, matches design doc's prediction; not yet cross-checked against the official app's own HR reading |
-| Connect-time catch-up sync is automatic per-connection (not coincidental official-app traffic) | Raised to likely — recurred on 3/3 reconnects this session |
-| `fd4b0007` = CBOR-encoded device metadata, sent once per connection | Confirmed it's CBOR and readable; full field mapping not attempted |
-| R21/r22 layouts | Still not captured — this session confirms `0x28` (compact HR) but no evidence yet of the richer optical/IMU records |
-
-### Session 3 (2026-09-07): IMU/optical enabled, but a real write bug ate two commands
-
-136 frames, 130 seconds, first live session with `toggleImuMode`/
-`enableOpticalData`/`toggleOpticalMode` added to the command sequence.
-Findings:
-
-- **All 5 of the streaming-toggle commands were accepted** — `fd4b0003`
-  responses echo back `inner[1]` = our own outgoing sequence number and
-  `inner[2]` = the opcode the band processed, so `0x03`/`0x3f`/`0x6a`/`0x6b`/
-  `0x6c` all confirmed round-tripping cleanly (this echo behavior is itself a
-  new, useful, confirmed fact about the `0x24` response format).
-- **`getHelloHarvard` and `getBatteryLevel` got no response at all** — the
-  echoed sequence numbers on the 5 responses that *did* arrive start at `1`,
-  meaning the band never even registered receiving the first two commands as
-  attempts. Root cause: `BandConnection.send` fired all seven
-  `peripheral.writeValue(type: .withResponse)` calls back-to-back with no
-  wait between them, and nothing checked `didWriteValueFor` at all — the
-  first two writes were silently dropped by CoreBluetooth rather than queued.
-  **Fixed**: `send` is now `async`, waits for the real write-completion
-  callback (or a 3-second timeout) before returning, and
-  `beginSafeCommandSequence` awaits each command in turn instead of firing
-  all seven at once. `LiveView` now shows a per-command success/failure list
-  so this class of failure is visible next time instead of silent.
-- **No new packet type appeared** despite the toggle commands succeeding —
-  still only `0x28` (compact HR) and `0x24` (responses) in 130 seconds. Most
-  likely explanation: 130 seconds isn't enough dwell time, and/or optical
-  needs snugger skin contact than this session had. Not conclusive either
-  way yet — worth another attempt now that the write-ordering bug is fixed
-  and won't confound the result.
-
-### Session 4 (2026-09-07): the "opcode echo" theory was likely wrong, and a real goldmine of firmware strings
-
-Pulled again right after the write-completion fix, expecting HELLO/battery to
-finally get answered. They still didn't — but digging into *why* turned up
-something bigger than that one bug.
-
-**The debug-log characteristic isn't limited to `0x32`.** Widening the
-ASCII-string search past just `0x32` frames turned up plain-text firmware log
-lines riding inside `0x24`-typed frames too, on **both** `fd4b0003` and
-`fd4b0005`. That means session 3's "opcode echo" read — `inner[2]` on a
-`0x24` frame equals the opcode we just sent — was likely a coincidence for
-some frames and a real echo for others, with no reliable way from the outside
-to tell which is which. **Downgrading that finding: it is no longer safe to
-assume the 5 toggle commands' apparent "acks" in sessions 3-4 were actually
-responses to *this app's* requests**, as opposed to debug-log noise or
-another client's (the official app's) traffic landing at a coincidentally
-matching byte offset.
-
-**Real, human-readable firmware strings recovered** (same decode technique as
-`0x32` in session 1, just applied more broadly):
+20-byte inner payload. Decoded by `RealtimeHRDecoder`, which reads `inner[8]` only.
 
 ```
-BLE_CMD: Command Set Realtime HR
+inner[0]      0x28        packet_type
+inner[1]      0x02        constant; subtype?
+inner[2..3]   u16 LE      monotonic counter (not wall-clock time)
+inner[4..5]   0x9e 0x6a   constant; unknown
+inner[6..7]   varies      changes with the counter's rollover; unknown
+inner[8]      u8          HEART RATE, bpm, unscaled
+inner[9..19]  varies      unmapped (likely signal quality, motion, skin contact)
+```
+
+Physiologically plausible (65–95 bpm at rest and light activity) and stable across
+three sessions on different days. Not yet cross-checked against the official app's
+live heart rate.
+
+### `fd4b0007`: device metadata (identified, not mapped)
+
+About once per connection. Not envelope-framed. The bytes are CBOR; readable text
+includes a version-like string (`50.41.1.0`), a hardware-like string (`WG50_r45`), a
+codename (`maverick`) and a long ID. `DeviceMetadataDecoder` surfaces the strings for
+Signal details without claiming which is which.
+
+### `0x32`: firmware debug log
+
+`inner[16:]` decoded as ASCII up to the first NUL gives literal firmware log lines,
+for example:
+
+```
+BLE: hist transfer start response ack, start burst
+BLE: History burst success. Trim: 0x00000002:0001c4e5 (2:115941)
+BLE: Historical Dump Complete
+BLE: Pull stats: Data: 598, Events: 27, Bytes: 77132, Secs: ...6.280
+BLE_CMD: Invalid packet, error = 2
 BLE_CMD: Command Get Data Range
-BLE_CMD: Send persistent config key, index 1: enable_r22_packets
-BLE_CMD: Send persistent config key, index 2: enable_r22_v2_packets
-BLE_CMD: Send persistent config key, index 3: enable_r22_v3_packets
-... (through v9)
-BLE_CMD: Send persistent config key, index 10: disable_pip_r26_packets
-BLE_CMD: Send persistent config key, index 14: hr_ch_switching
-BLE_CMD: Send persistent config key, index 15: ir_hw_switching
-BLE_CMD: Send persistent config key, index 16: enable_passive_s[leep?]
-BLE_CMD: Send persistent config key, index 17: enable_sig11_during_sleep
-BLE_CMD: Send persistent config key, index 19: enable_sig12
-BLE_CMD: Send persistent config key, index 20: enable_frizzle_burst_mode
-BLE_CMD: Send persistent config key, index 21: ir_1x_enable
-BLE_CMD: Send persistent config key, index 22: enable_rock[?]
-BLE_CMD: Attempt to set enable_r22_v2_packets to 2
-SENSORS: No active sources. Backlog: 0.0
-BLE_CMD: Invalid packet, error = 2   (recurs in every session, not just session 1)
 ```
 
-This is real value even without knowing who triggered it: **r22 has (at
-least) 9 firmware-internal protocol versions** (`v2`-`v9`, plus an
-unversioned `enable_r22_packets`), which explains why it's undocumented and
-hard to pin down — whoever's asking may be negotiating which version the
-connected client understands. `disable_pip_r26_packets` is a config key this
-document hadn't seen named anywhere — a channel/record type ("r26"?) not in
-`docs/design.md`'s R10/R21/r22 list at all. `trap_fit_gen5` and
-`wear_detect_...` also appeared elsewhere in the same log stream.
+## Not decoded yet
 
-**The likely reason no r22 data has shown up in any session yet**: `SENSORS:
-No active sources. Backlog: 0.0` appears immediately after r22-enable
-attempts, every time. Whatever is asking for r22 (this app, the official
-app, or firmware's own negotiation — see above, now unclear which), the band
-itself is reporting that no sensor source is actually active. This reads
-like a real precondition not being met (skin contact / wrist-on / warm-up
-time) rather than a framing or opcode problem.
+- **R10** (`0x2B`): never seen. `R10Decoder` is a speculative decoder that
+  applies Gen 4's layout and calls a frame plausible only when heart rate and an
+  accelerometer magnitude near 1 g both agree. R10 heart rate and `0x28` heart rate
+  should agree within ±1 bpm on a worn band, a free cross-check that Signal details
+  computes (labeled unconfirmed) once both exist.
+- **R21**: six-channel optical, the only route to a true respiratory rate.
+- **r22**: reportedly HR, RR intervals and accelerometer. The firmware names at least
+  nine versions (`enable_r22_packets`, `enable_r22_v2_packets` … `v9`), and each enable
+  attempt is followed by `SENSORS: No active sources. Backlog: 0.0`: a precondition
+  (skin contact, wear time, something else) isn't met. No r22 frame has arrived.
+- **Events**: Gen 4 numbering (`9` wrist on, `10` wrist off, `3` battery, `7`/`8`
+  charging, `13` RTC lost, `14` double tap) is the hypothesis, not confirmed.
 
-**Recommended next step, not yet done**: force-quit the official WHOOP app
-(not just background it) before the next spike session. That's the one
-change that would cleanly separate "this app's traffic" from "everything
-else on this shared-looking channel" and resolve the attribution question
-above, rather than guessing from more mixed logs.
+**Gen 4's type-24 layout, the hypothesis to test against:** `[7:11]` u32 LE unix time,
+`[17]` u8 HR, `[18]` RR count, `[19:19+2n]` i16 LE RR ms, `[29]` u16 green PPG, `[31]`
+u16 red/IR, `[36:48]` f32×3 accelerometer, `[51]` skin contact 0–198, `[64]`/`[66]`
+red/IR ADC, `[68]` skin temperature ADC, `[70]` ambient light, `[88]` RHR baseline.
 
-### Safety — checked again given the larger volume
+**How to hunt a field:** correlate a candidate heart-rate byte against the official
+app's live number or a chest strap; find RR arrays as runs of plausible 600–1400 ms
+i16 values; find the accelerometer as f32 triples with magnitude ≈ 1 g at rest.
+`PacketTypeCounts` on Signal details shows when a new packet type first appears.
 
-This session moved far more data than session 1 (~92 minutes, three
-reconnects, several hundred KB total, vs. session 1's single 8-second
-capture window) purely because it ran much longer and was pulled after the
-full duration rather than a few seconds in. **Recommend one more quick
-official-app/scores glance** — not out of new alarm (the `0x2F`-is-shared-format
-finding above is reassuring, not concerning), just to keep the same standard
-applied every time real band activity is this extensive.
+## Open questions
 
-**Checked 2026-09-07 (session 2): official app synced normally, scores
-looked normal.**
+- Does `field` (bytes 4–5) ever differ from `0x0001`?
+- `GET_HELLO_HARVARD` and `GET_BATTERY_LEVEL` have never been answered, while every
+  one-byte-body command is. They now send a `0x00` body to test whether empty bodies
+  are dropped ([session 5](#session-5-2026-09-12-a-clean-session)).
+- The `0x24` response sequence number is the band's own persistent counter, not the
+  app's, so it can't attribute a response to a request.
 
-### Session 5 (2026-09-12): a clean, isolated session resolves the attribution question
+## Session log
 
-Five sessions accumulated between 2026-09-07 and 2026-09-12. Two of them
-(started `1788843213`, `1789044211`) ran very long unattended — 105 and 172
-minutes — and are dominated by `0x2F`/`0x30`/`0x31`/`0x32` traffic (7,000-
-10,700 `0x2F` frames each, plus hundreds of `0x32` debug-log lines): heavy,
-mixed, exactly like every prior session. The most recent one (started
-`1789205307`, ~6.5 minutes) is different: **397 frames total, and every
-single one is either `0x28` (HR) or `0x24` (our own command responses) — zero
-`0x2F`, zero `0x30`, zero `0x31`, zero `0x32`.**
+### Session 1 (2026-09-07): envelope confirmed
 
-That's the cleanest signal yet, and it answers session 4's open question:
-whatever generates the historical-burst/debug-log traffic did not happen at
-all in a session with no other apparent activity, while it happened in every
-other session captured so far. That's consistent with the official app (or
-something tied to its own activity) being the source of that traffic, not
-an automatic per-connection behavior of the band itself — raising confidence
-on the "official app's concurrent traffic" side of session 1's original open
-question, though this is one data point, not a controlled A/B test with the
-official app deliberately force-quit.
+711 frames, ~10 minutes. The envelope the original plan guessed (Gen 4 shape) was
+wrong; brute-forcing checksum ranges over 14 near-identical frames found the layout
+above, then it matched all 711. The app's four commands, built with the wrong
+envelope, were all rejected by the band (`Invalid packet, error = 2`), so the app
+changed nothing that session. A connect-time burst of 598 records and 27 events
+(77 KB in ~4 s) appeared in the debug log; the app didn't command it. Official app
+checked afterwards: synced normally, scores intact.
 
-**HR decode holds up over a longer clean run**: 392 samples at a steady 1 Hz,
-65-95 bpm the entire time — same field (`inner[8]`), same physiologically
-plausible range, now confirmed across three separate sessions on different
-days.
+### Session 2 (2026-09-07): heart rate decoded
 
-**HELLO/battery still got zero responses — now confirmed across all 6
-sessions ever captured.** A full-database check: 1,327 total command-response
-frames logged since session 1, and not one of them echoes opcode `0x23`
-(`getHelloHarvard`) or `0x1A` (`getBatteryLevel`) — while the 5 opcodes sent
-with a 1-byte body (`toggleRealtimeHR`, `sendR10R11Realtime`,
-`toggleImuMode`, `enableOpticalData`, `toggleOpticalMode`) have a 100% answer
-rate every single time. **New leading hypothesis: an empty-body command gets
-silently dropped.** `getHelloHarvard`/`getBatteryLevel` were the only two
-sent with `Data()` (empty); every other opcode always carried at least one
-byte. Changed `SpikeRecorder.beginSafeCommandSequence` to send a harmless
-`0x00` byte with both instead of an empty body — untested until the next
-session confirms or refutes it.
+7,343 frames over three reconnects, ~92 minutes, every one with valid CRCs. Commands
+now parsed. `0x28` identified as realtime heart rate (409 frames at 1 Hz) and
+`fd4b0007` as CBOR. `0x2F` turned out to be the same 112-byte structure in the
+catch-up burst and the live stream, so it is a general record wrapper, not a
+drain-specific type. Official app checked: normal.
 
-**Also newly confirmed**: the band's response sequence-number field does
-*not* reset per-connection — it climbed to the 80s-90s range in this
-session despite being a fresh `BandConnection` instance with its own
-`sequenceCounter` starting at 0. That number is the *band's* own counter
-(likely persistent since its last power cycle, incrementing once per command
-it processes from any source), not an echo purely scoped to this app's own
-requests — worth keeping in mind before reading too much into any future
-"sequence number" observation.
+### Session 3 (2026-09-07): a write-ordering bug
+
+First session with the IMU and optical toggles. The five toggles got responses;
+HELLO and battery got none, because seven back-to-back writes lost the first two.
+`BandConnection.send` now awaits each write's completion. No new packet type appeared
+in 130 seconds.
+
+### Session 4 (2026-09-07): firmware log strings
+
+Firmware log text also rides inside `0x24` frames, so a `0x24`'s apparent opcode echo
+can't be trusted as a response to the app. Recovered persistent config keys include
+`enable_r22_packets` through `enable_r22_v9_packets`, `disable_pip_r26_packets`,
+`hr_ch_switching`, `ir_hw_switching`, `enable_sig11_during_sleep`, `enable_sig12`,
+`enable_frizzle_burst_mode` and `ir_1x_enable`, followed each time by
+`SENSORS: No active sources`.
+
+### Session 5 (2026-09-12): a clean session
+
+Of five sessions since session 4, two long unattended ones showed the usual mix of
+`0x2F`–`0x32` traffic. The most recent, ~6.5 minutes, had 397 frames that were all
+`0x28` or `0x24`. That points to the burst and log traffic coming from the official
+app's own activity rather than the band on every connection; one clean session, not
+a controlled test. Heart rate held at 1 Hz, 65–95 bpm. Across all sessions, 1,327
+responses and none to HELLO or battery, which led to the one-byte-body test above.

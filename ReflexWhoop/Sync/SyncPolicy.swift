@@ -2,8 +2,8 @@ import Foundation
 
 /// How stale each resource is allowed to get before a foreground sync bothers
 /// re-fetching it. Keeps a typical "app opened" sync to a handful of requests
-/// instead of always re-pulling everything — per docs/design.md's "System design
-/// decisions worth naming: adaptive polling instead of fetch-everything".
+/// instead of always re-pulling everything — per docs/ARCHITECTURE.md's
+/// Source A section.
 enum SyncPolicy {
     static let stalenessBudget: [String: TimeInterval] = [
         "workout": 30 * 60,

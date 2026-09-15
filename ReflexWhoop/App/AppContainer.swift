@@ -118,7 +118,7 @@ final class AppContainer {
     }
 
     /// Re-derives every BLE session's time series from the inbox bytes. Exposed
-    /// as a deliberate user action (Data tab) because it rewrites every chunk.
+    /// as a deliberate user action (Archive, Rebuild heart-rate history) because it rewrites every chunk.
     func replayBleNormalization() async throws -> BleNormalizer.Stats {
         let dbPool = database.dbPool
         return try await Task.detached { try BleNormalizer.replay(dbPool) }.value

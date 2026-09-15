@@ -42,7 +42,7 @@ actor WhoopClient {
         self.urlSession = urlSession
     }
 
-    // MARK: - Named endpoints (all per docs/design.md's Source A table)
+    // MARK: - Named endpoints (all per docs/ARCHITECTURE.md's Source A table)
 
     func cyclePage(nextToken: String?, start: Date?, end: Date?, limit: Int = 25) async throws -> Data {
         try await get("/v2/cycle", query: pageQuery(nextToken: nextToken, start: start, end: end, limit: limit))

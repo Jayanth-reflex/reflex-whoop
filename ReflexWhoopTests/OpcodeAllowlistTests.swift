@@ -1,7 +1,7 @@
 import XCTest
 @testable import ReflexWhoop
 
-/// Per docs/design.md's "Safety rails — non-negotiable": these two tables are
+/// Per docs/PROTOCOL-GEN5.md's "Safety rails": these two tables are
 /// the actual safety mechanism (the envelope/decoder guesses elsewhere are not).
 /// Every opcode named in the design doc must land on the correct side, the two
 /// sides must never overlap, and a value outside both tables must still be
@@ -31,13 +31,13 @@ final class OpcodeAllowlistTests: XCTestCase {
     }
 
     func testUnknownOpcodeIsRejectedNotJustUnlistedOnes() {
-        // 0xFF isn't in either table in docs/design.md — must fail closed.
+        // 0xFF isn't in either table in docs/PROTOCOL-GEN5.md — must fail closed.
         XCTAssertThrowsError(try OpcodeAllowlist.assertAllowed(0xFF))
         XCTAssertFalse(OpcodeAllowlist.isAllowed(0xFF))
     }
 
     func testDesignDocTableMatchesExactly() {
-        // Transcribed from docs/design.md's two opcode tables — if this drifts
+        // Transcribed from docs/PROTOCOL-GEN5.md's two opcode tables — if this drifts
         // from that doc, one of them is wrong.
         let expectedAllowed: Set<UInt8> = [0x23, 0x1A, 0x22, 0x03, 0x3F, 0x6A, 0x6B, 0x6C]
         let expectedForbidden: Set<UInt8> = [0x16, 0x17, 0x21, 0x14, 0x9A, 0x1D, 0x0A]

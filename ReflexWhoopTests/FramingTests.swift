@@ -122,7 +122,7 @@ final class FramingTests: XCTestCase {
 
     func testReassemblerResyncsPastAStrayMarkerByteInSensorNoise() {
         // A 0xAA byte inside unrelated sensor noise, followed by a real frame —
-        // per docs/design.md this is exactly the case length-based reassembly
+        // per docs/PROTOCOL-GEN5.md this is exactly the case length-based reassembly
         // must survive rather than getting stuck on the wrong start.
         let noise = Data([0x01, 0xAA, 0x02, 0x03]) // 0xAA here is not a real frame start
         let real = Gen5Envelope.encode(field: 1, inner: Data([0x24, 0x01, 0x1A]))

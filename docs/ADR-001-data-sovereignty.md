@@ -3,8 +3,12 @@
 **Status:** Accepted — P0 through P3 implemented 2026-09-13
 **Date:** 2026-09-13
 **Deciders:** Jayanth (sole owner/operator)
-**Supersedes:** nothing. Complements `docs/design.md` (the approved plan) and
-`docs/DECISIONS.md` (the running implementation log).
+**Supersedes:** nothing.
+
+> A record of the decision as it was made. `design.md` below is the original build
+> plan, since retired; what it planned and what was built now lives in
+> [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`PROTOCOL-GEN5.md`](PROTOCOL-GEN5.md).
+> Screen names (Data tab, Settings) are from the UI of the time, now Archive.
 
 ---
 
@@ -330,7 +334,8 @@ product; P2+ implements this ADR.
 8. [x] **S3:** Archive mode. Today no longer blanks out when signed out if the
        archive holds data — it shows the analysis with a banner naming the
        source state and the archive's span.
-9. [x] `docs/NEUTRAL-CONTRACT.md`. Audit result: the core path
+9. [x] The source-neutral contract
+       ([`ARCHITECTURE.md`](ARCHITECTURE.md#the-source-neutral-contract)). Audit result: the core path
        (baselines/anomalies/readiness) is already clean; `CorrelationEngine`
        and `AnalysisQueries` have two grandfathered reads of WHOOP-shaped
        tables, documented with the reason they are not being fixed yet.

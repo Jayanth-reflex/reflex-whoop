@@ -2,11 +2,11 @@ import CoreBluetooth
 
 /// WHOOP 5.0's custom GATT service and the opcode vocabulary of its command
 /// protocol. UUIDs and the safety split (allowed vs. permanently forbidden) are
-/// taken directly from docs/design.md's "Source B — BLE direct to the band"
+/// taken directly from docs/PROTOCOL-GEN5.md's "Safety rails"
 /// section — do not add or change an opcode set here without updating that doc.
 enum Ble {
     /// Gen 5's custom service. Differs from Gen 4's `61080001-…` (see
-    /// docs/DECISIONS.md and docs/design.md's Gen4/Gen5 diff table).
+    /// docs/DECISIONS.md and docs/PROTOCOL-GEN5.md's "Connection" table).
     static let serviceUUID = CBUUID(string: "fd4b0001-cce1-4033-93ce-002d5875f58a")
 
     static let writeCharacteristicUUID = CBUUID(string: "fd4b0002-cce1-4033-93ce-002d5875f58a")
@@ -26,7 +26,7 @@ enum Ble {
     ]
 
     /// Inner-packet `packet_type` byte (position 0 of the inner packet, per
-    /// docs/design.md — unchanged between Gen 4 and Gen 5).
+    /// docs/PROTOCOL-GEN5.md — unchanged between Gen 4 and Gen 5).
     enum PacketType: UInt8 {
         case command = 0x23
         case response = 0x24
@@ -55,7 +55,7 @@ enum Ble {
 
     /// Permanently forbidden — never sent, not behind a flag. Kept as an
     /// explicit list (rather than "everything not in AllowedOpcode") purely so
-    /// the unit test can assert each one by name against docs/design.md's table;
+    /// the unit test can assert each one by name against docs/PROTOCOL-GEN5.md's table;
     /// the actual enforcement in `OpcodeAllowlist` is allowlist-based either way.
     enum ForbiddenOpcode: UInt8, CaseIterable {
         case sendHistoricalData = 0x16 // starts flash drain

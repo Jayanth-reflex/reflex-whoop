@@ -3,8 +3,7 @@ import Foundation
 import GRDB
 import Observation
 
-/// Orchestrates the Phase 4 discovery spike (docs/design.md, "Gen 5 discovery
-/// spike"): connect, send the safe read-only command sequence, and log every
+/// Orchestrates the Phase 4 discovery spike (docs/PROTOCOL-GEN5.md): connect, send the safe read-only command sequence, and log every
 /// raw notification to `ingest_inbox` untouched for later offline analysis.
 /// This is deliberately dumb about *meaning* — its only judgment call is which
 /// commands are safe to send (delegated entirely to `OpcodeAllowlist` via
@@ -41,7 +40,7 @@ final class SpikeRecorder {
     /// ever arrived — unconfirmed on Gen 5, see that type's doc comment.
     private(set) var lastR10Candidate: R10Decoder.Sample?
     /// `0x28` HR minus `R10Decoder`'s candidate HR, once both exist —
-    /// docs/design.md's "free cross-check" (R10 vs compact HR should agree
+    /// docs/PROTOCOL-GEN5.md's R10 "free cross-check" (R10 vs compact HR should agree
     /// within ±1 bpm on a worn band), computed automatically the moment both
     /// sides of it exist instead of waiting for a manual comparison.
     private(set) var hrCrossCheckDiffBpm: Int?
@@ -145,8 +144,8 @@ final class SpikeRecorder {
         sessionStartedAt = nil
     }
 
-    /// Sends the safe, read-only-plus-live-stream sequence from docs/design.md's
-    /// "What we stream": identity/battery first (to validate the envelope
+    /// Sends the safe, read-only-plus-live-stream sequence from docs/PROTOCOL-GEN5.md's
+    /// "Safety rails" allowlist: identity/battery first (to validate the envelope
     /// round-trips before trusting anything else), then the realtime toggles —
     /// HR, IMU, and optical (R21, the only source of true respiratory rate),
     /// all opcodes from the allowlist's live-only set. Called once from the UI
@@ -225,8 +224,8 @@ final class SpikeRecorder {
             }
         }
 
-        // fd4b0007 is not Gen5Envelope-framed (docs/PROTOCOL-GEN5.md:
-        // "these do not match the Gen5Envelope structure at all") — decode it
+        // fd4b0007 is not Gen5Envelope-framed (docs/PROTOCOL-GEN5.md,
+        // "`fd4b0007`: device metadata") — decode it
         // directly rather than handing it to the envelope reassembler, which
         // would just fail to find a marker and drop it.
         if characteristic == Ble.unknown0007CharacteristicUUID {

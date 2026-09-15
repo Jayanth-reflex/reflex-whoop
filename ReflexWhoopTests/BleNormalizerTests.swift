@@ -64,7 +64,7 @@ final class BleNormalizerTests: XCTestCase {
 
     /// The HRV columns must stay NULL rather than being filled with a plausible
     /// substitute — there is no RR channel, so any number there would be
-    /// fabricated (docs/design.md: "never fabricate a value").
+    /// fabricated (docs/ARCHITECTURE.md: "never fabricate a value").
     func testHrvColumnsStayNullWithoutAnRrChannel() throws {
         try insertSession(id: "s1", start: 1000, end: 1100)
         try appendFrame(hrFrame(bpm: 65), at: 1000)

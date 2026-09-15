@@ -58,7 +58,7 @@
 	<!-- CoreBluetooth (Phase 4) — direct connection to your own WHOOP band over
 	     its custom fd4b… service. Read-only: no write path to any band setting
 	     exists in this app. See docs/DECISIONS.md and the BLE safety rails in
-	     docs/design.md. -->
+	     docs/PROTOCOL-GEN5.md. -->
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>ReflexWhoop connects to your own WHOOP band to record your heart rate. It only reads from the band and never changes anything on it.</string>
 

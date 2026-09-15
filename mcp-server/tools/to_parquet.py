@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Convert a ReflexWhoop export's CSVs to Parquet, on the Mac — there's no
 maintained pure-Swift Parquet writer worth depending on for the app itself
-(docs/design.md), so this runs after the fact on an already-exported folder.
+(docs/ARCHITECTURE.md), so this runs after the fact on an already-exported folder.
 
 Usage:
     python tools/to_parquet.py <export_dir>

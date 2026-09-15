@@ -3,8 +3,8 @@ import Foundation
 /// Decodes the one field confirmed in `docs/PROTOCOL-GEN5.md`'s "Session 2"
 /// findings: the realtime compact-HR record (inner packet_type `0x28`) has a
 /// direct, unscaled heart-rate byte at offset 8. Everything else in that
-/// 20-byte record is unmapped — per docs/design.md, "only decode a field once
-/// the spike confirms it," so this decoder exposes nothing else.
+/// 20-byte record is unmapped — per docs/PROTOCOL-GEN5.md, "only decode a field once
+/// captured frames confirm it," so this decoder exposes nothing else.
 enum RealtimeHRDecoder {
     /// `inner` is the envelope's inner packet — `Gen5Envelope.Frame.inner`,
     /// not the raw notification. Returns `nil` for anything that isn't a

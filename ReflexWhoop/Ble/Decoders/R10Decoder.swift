@@ -1,11 +1,11 @@
 import Foundation
 
-/// Speculative decoder for R10 (inner packet_type `0x2B`, docs/design.md:
-/// "packet `0x2B`, record `0x0A`, ~1.9 KB per record: HR + IMU"). Gen 5 has
+/// Speculative decoder for R10 (inner packet_type `0x2B`, docs/PROTOCOL-GEN5.md:
+/// "R10 realtime raw (HR + IMU), per Gen 4"). Gen 5 has
 /// never actually been seen sending a `0x2B` frame — no session's
 /// `PacketTypeCounts` has shown one yet — so unlike `RealtimeHRDecoder`
-/// there is **no confirmed layout to decode**, only docs/design.md's
-/// explicit "hypothesis to test, not the answer": Gen 4's type-24 record
+/// there is **no confirmed layout to decode**, only docs/PROTOCOL-GEN5.md's
+/// "hypothesis to test against": Gen 4's type-24 record
 /// layout, offsets `[17]`=HR, `[18]`=rr_count, `[19:19+2n]`=RR ms,
 /// `[36:48]`=f32×3 accel.
 ///
@@ -17,7 +17,7 @@ import Foundation
 /// gravity) to agree before calling it plausible at all, per the same
 /// two-independent-signals bar the project used to confirm `0x28`. Never
 /// surfaced anywhere outside the Live discovery-spike screen, and always
-/// labeled unconfirmed there — see docs/design.md: "Never fabricate a value."
+/// labeled unconfirmed there — see docs/PROTOCOL-GEN5.md: "Never fabricate a value."
 enum R10Decoder {
     struct Sample {
         let candidateHrBpm: UInt8

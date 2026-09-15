@@ -124,7 +124,7 @@ final class BandConnection: NSObject {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             pendingWrite = continuation
             // Gen 5 requires write-with-response — write-without-response is a
-            // documented no-op (docs/design.md's Gen4/Gen5 diff table).
+            // documented no-op (docs/PROTOCOL-GEN5.md's "Connection" table).
             peripheral.writeValue(frame, for: writeCharacteristic, type: .withResponse)
 
             Task { @MainActor in

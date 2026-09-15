@@ -154,8 +154,8 @@ enum Gen5Envelope {
 
 /// Buffers fragmented BLE notifications into complete envelope candidates,
 /// length-based rather than triggered on the next `0xAA` byte — per
-/// docs/design.md: "sensor payloads contain 0xAA bytes constantly. This is the
-/// single most common way a decoder silently corrupts data." If a header's
+/// docs/PROTOCOL-GEN5.md: sensor payloads contain `0xAA` constantly, and resyncing
+/// on the marker is the most common way a decoder silently corrupts data. If a header's
 /// claimed length is implausible (garbage, or we tuned in mid-stream), this
 /// resyncs by scanning for the next plausible marker rather than getting stuck.
 ///

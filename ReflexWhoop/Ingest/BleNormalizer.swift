@@ -14,7 +14,7 @@ import GRDB
 /// **Only confirmed decodes emit rows.** Today that is realtime heart rate
 /// (`0x28`, `RealtimeHRDecoder`). Frames whose packet type has no confirmed
 /// decoder are counted as `unmapped` and otherwise ignored — never guessed at,
-/// per docs/design.md's "only decode a field once the spike confirms it."
+/// per docs/PROTOCOL-GEN5.md's "only decode a field once captured frames confirm it."
 /// Those counts are the point of `session_metrics.unmapped_frame_count`: they
 /// are how firmware drift announces itself (S6).
 enum BleNormalizer {
@@ -218,7 +218,7 @@ enum BleNormalizer {
     /// purpose: every one of them needs beat-to-beat RR intervals, and no
     /// confirmed Gen 5 decoder produces those yet. `signal_quality` carries the
     /// reason rather than leaving a caller to guess at an unexplained void —
-    /// docs/design.md: "absent input yields unavailable, not zero."
+    /// docs/ARCHITECTURE.md: "absent input yields unavailable, not zero."
     private static func writeSessionMetrics(
         _ db: GRDB.Database,
         sessionID: String,

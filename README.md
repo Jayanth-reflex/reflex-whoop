@@ -1,142 +1,113 @@
 # ReflexWhoop
 
-Personal WHOOP 5.0 data collector, analyzer, and local store for iPhone. Pulls your
-own data from two sources — the WHOOP Cloud API and (later) direct BLE to the band —
-stores it losslessly on-device, and computes the trends, baselines, and correlations
-WHOOP's own app doesn't expose.
+An iPhone app that keeps your WHOOP data on your phone, measures each reading against
+your own normal, and keeps working if your membership ends.
 
-Full design: [`docs/design.md`](docs/design.md). Notable implementation decisions:
-[`docs/DECISIONS.md`](docs/DECISIONS.md).
+It pulls your history from the WHOOP API, records live heart rate straight from a
+WHOOP 5.0 band over read-only Bluetooth, and stores both in a local SQLite archive it
+never deletes. A small MCP server lets Claude on your Mac query an exported copy.
 
-Personal use, single member. Not submitted to the App Store.
+> **Unofficial.** Not affiliated with, endorsed by or supported by WHOOP. The
+> Bluetooth protocol is reverse-engineered. This is not a medical device, and nothing
+> it shows is medical advice.
 
-## Status
+## What it does
 
-**Phases 1-3 complete and verified live against a real WHOOP account and a real
-iPhone** (not just the simulator — see "Verification" below). Phase 4 (BLE) is
-underway with one confirmed sensor decode, now normalized into queryable time
-series; Phase 5 (export + MCP) is built and working. 117/117 tests passing,
-Debug and Release configurations both building clean.
+- **Today:** recovery with a one-sentence verdict, strain on WHOOP's 0–21 scale, last
+  night's sleep, and overnight vitals (HRV, resting heart rate, breathing rate, skin
+  temperature, blood oxygen), each against your 60-day normal.
+- **Trends:** every metric over 30 days, 90 days, a year or all history. **Patterns**
+  tests which habits track next-morning recovery, with multiple-comparison correction
+  and an honest "not enough data yet". **Unusual days** lists readings 2 SD or more
+  from normal and flags nights when several signals move together.
+- **Band:** live heart rate and recordings from the band, kept going in the background
+  with **Keep recording**.
+- **Archive:** what the phone holds, source status, export (CSV, a SQLite snapshot and
+  raw payloads), and Celsius or Fahrenheit.
 
-An architecture review — [`docs/ADR-001-data-sovereignty.md`](docs/ADR-001-data-sovereignty.md)
-— reframed the project around the fact that every asset here except the local
-archive is leased from WHOOP. Its decision (source-agnostic archive; every
-source can be absent; the archive is never destroyed) is implemented, and the
-boundary it depends on is specified in
-[`docs/NEUTRAL-CONTRACT.md`](docs/NEUTRAL-CONTRACT.md).
+## Safety and privacy
 
-- **Phase 1 (foundation):** storage schema, `ChunkCodec`/`ChunkStore` for BLE time
-  series, the ingest inbox, and the API-model normalizer.
-- **Phase 2 (collector):** OAuth2 against the real WHOOP API (`ASWebAuthenticationSession`,
-  Keychain-backed token storage with atomic rotation handling), the rate-limited API
-  client, and the sync engine (per-resource backfill, 7-day re-scoring lookback,
-  pending-score re-fetch, adaptive staleness budgets, manual/background/foreground
-  triggers).
-- **Phase 3 (analysis + UI):** `daily_metrics` built from the normalized layer,
-  30/60-day rolling baselines with z-scores, a labeled ReflexWhoop readiness
-  composite (HRV/RHR/sleep-debt/load-balance — explicitly not WHOOP's own score),
-  illness/excursion anomaly detection, and lagged Spearman correlations against
-  next-day recovery with Benjamini-Hochberg correction across the whole predictor
-  batch. Today/Trends/Insights are real screens now, not placeholders.
-
-- **Phase 4 (BLE, in progress):** direct CoreBluetooth connection to the band
-  over its custom `fd4b…` service. The Gen 5 envelope is fully reverse-engineered
-  and confirmed against two real worn sessions (see
-  [`docs/PROTOCOL-GEN5.md`](docs/PROTOCOL-GEN5.md)) — 8-byte header, CRC-16 +
-  CRC-32 framing, no padding. `OpcodeAllowlist` is the single choke point every
-  outgoing command passes through: it structurally cannot send a
-  flash-cursor-moving opcode, enforced by tests, not just convention. One
-  sensor field is confirmed and decoded (realtime heart rate, `0x28` records);
-  IMU and optical (R21/r22 — the higher-value, undocumented channels) are
-  enabled in the spike but not yet mapped.
-- **Phase 5 (export + MCP):** `Exporter` writes CSVs, a `VACUUM INTO` SQLite
-  snapshot, raw API/BLE payload dumps, and a manifest to `Documents/exports/`,
-  wired to a Data-tab button with a share sheet. `mcp-server/` (Python) opens
-  that snapshot read-only and gives Claude on your Mac `schema`/`query`/
-  `daily_summary`/`trend`/`correlations`/`workouts`/`hrv_session` tools — see
-  [`mcp-server/README.md`](mcp-server/README.md) for setup.
-
-**Not yet built:** R21/r22 sensor decoding, and therefore the HRV suite
-(rMSSD/SDNN/pNN50/DFA-α1) and true respiratory rate — all four need a
-beat-to-beat RR channel that no confirmed Gen 5 decoder produces yet. Those
-columns exist and stay `NULL` rather than being filled with a substitute. Also
-outstanding: the Parquet conversion step beyond the CLI script, and an alarm
-threshold on the decode canary.
-
-### Verification
-
-Phases 2 and 3 were each confirmed by pulling the live on-device SQLite database
-(`xcrun devicectl device copy from --domain-type appDataContainer`, WAL file
-included) off a real iPhone running a real, currently-subscribed WHOOP account —
-not just unit tests. Phase 2: a full backfill landed 243 real records (cycles,
-recoveries, sleeps, workouts) with zero sync errors. Phase 3: 63 real days were
-analyzed into 634 baselines, 9 correlations, and 21 anomalies, correctly reporting
-"weak/insufficient" on every correlation given only ~2 months of history rather than
-manufacturing false significance.
+- **The band is never modified.** Every Bluetooth command passes a compile-time
+  allowlist of read-only and live-stream opcodes. Commands that read or move the band's
+  stored history, change its clock or reboot it can't be sent, and history packets
+  are never acknowledged. Details: [docs/PROTOCOL-GEN5.md](docs/PROTOCOL-GEN5.md#safety-rails).
+- **Your data stays on the phone.** No server, no analytics. It leaves only when you
+  export it.
+- **Credentials stay in the Keychain.** You bring your own WHOOP developer app; its
+  client ID and secret, and your tokens, are never in the binary or the repository.
+- **Nothing is made up.** A missing reading shows as missing, never as zero.
 
 ## Requirements
 
-- Xcode 26+, an iPhone, a cable.
-- **An Apple ID signed into Xcode** (Xcode → Settings → Accounts) — free (Personal
-  Team) or paid both work; free just means the installed build expires after 7 days
-  (see "Building," below) and the first install needs one manual on-device trust step
-  (Settings → General → VPN & Device Management → trust your Apple ID).
-- A WHOOP developer app: create one at
-  [developer.whoop.com](https://developer.whoop.com), set the redirect URI to
-  `reflexwhoop://oauth/callback`, and enable all six listed scopes
-  (`read:profile read:body_measurement read:cycles read:recovery read:sleep
-  read:workout`) — see [`docs/DECISIONS.md`](docs/DECISIONS.md) on the seventh,
-  `offline`, which isn't a dashboard checkbox at all.
+- A Mac with Xcode 26 or later, and an iPhone on iOS 26 or later.
+- An Apple ID signed into Xcode (Settings → Accounts). A free account works; its
+  installs expire after 7 days and reinstalling loses nothing.
+- For WHOOP data, an active WHOOP membership. For live heart rate, a WHOOP 5.0 band
+  already paired with the official WHOOP app on the same iPhone.
 
-## Building
+## Setup
+
+**1. Create a WHOOP developer app.** At [developer.whoop.com](https://developer.whoop.com),
+create an app with redirect URI `reflexwhoop://oauth/callback` and all six scopes:
+`read:profile`, `read:body_measurement`, `read:cycles`, `read:recovery`, `read:sleep`,
+`read:workout`. Keep the client ID and secret for step 3.
+
+**2. Build and install.**
 
 ```bash
-# Regenerate the .xcodeproj after adding/removing source files (no xcodegen/tuist
-# available in the dev environment this was built in — see docs/DECISIONS.md):
-gem install --user-install xcodeproj   # once
-ruby scripts/generate_project.rb
-
-# Resolve the GRDB.swift package and build:
-xcodebuild -resolvePackageDependencies -project ReflexWhoop.xcodeproj -scheme ReflexWhoop
-xcodebuild build -project ReflexWhoop.xcodeproj -scheme ReflexWhoop \
-  -destination 'platform=iOS Simulator,name=iPhone 17'
+git clone https://github.com/Jayanth-reflex/reflex-whoop.git
+cd reflex-whoop
+gem install --user-install xcodeproj
+DEVELOPMENT_TEAM=YOUR_TEAM_ID BUNDLE_ID=com.yourname.reflexwhoop ruby scripts/generate_project.rb
+open ReflexWhoop.xcodeproj
 ```
 
-Or just open `ReflexWhoop.xcodeproj` in Xcode, plug in your iPhone, and run — signing
-is already wired to a hardcoded `DEVELOPMENT_TEAM` in `scripts/generate_project.rb`
-(see [`docs/DECISIONS.md`](docs/DECISIONS.md) if you're building under a different
-Apple ID and need to change it). On a free Apple ID the installed build expires after
-7 days — re-run from Xcode (or `xcrun devicectl device install app` +
-`process launch`) to refresh it; no data is lost, sync is watermark-driven and
-backfills the gap. The very first install also needs one manual on-device trust step:
-Settings → General → VPN & Device Management → trust your Apple ID.
+Your team ID is in Xcode → Settings → Accounts, or on the Apple Developer site. In
+Xcode, pick your iPhone and press Run. The first time, trust your Apple ID on the
+phone: Settings → General → VPN & Device Management.
 
-## Testing
+**3. Connect.** The first-run flow asks which sources to use. For WHOOP, enter the
+client ID and secret and sign in; the app then brings in your full history. For the
+band, allow Bluetooth and turn on Keep recording.
+
+## Ask Claude about your data
+
+Export a copy from Archive, then point the MCP server at the snapshot. It opens the
+database read-only. Setup: [mcp-server/README.md](mcp-server/README.md).
+
+## Development
 
 ```bash
 xcodebuild test -project ReflexWhoop.xcodeproj -scheme ReflexWhoop \
   -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
 
-## Project layout
+Swift, SwiftUI, Swift Charts and [GRDB](https://github.com/groue/GRDB.swift), with no
+other app dependencies. Re-run `ruby scripts/generate_project.rb` after adding or removing
+files. Contributors and coding agents: read [AGENTS.md](AGENTS.md) first.
 
-```
-ReflexWhoop/
-  App/          composition root + SwiftUI app entry point
-  Auth/         OAuth2 against the WHOOP API — token store, Keychain, refresh
-  Api/          WHOOP v2 API models + rate-limited client
-  Ble/          direct-to-band Bluetooth — envelope, opcode allowlist, decoders
-                (Phase 4, in progress: HR confirmed, R21/r22 not yet mapped)
-  Ingest/       append-only inbox + normalizer — both data sources land here first
-  Store/        SQLite (GRDB): migrations, DAOs, BLE time-series chunk codec/store
-  Sync/         backfill / incremental / pending-score-refetch sync engine
-  Analysis/     daily_metrics builder, baselines, readiness, anomalies, correlations
-  Export/       CSV/SQLite snapshot/JSONL/manifest export (Phase 5, done)
-  UI/           SwiftUI screens — Today/Trends/Insights/Live/Data are all real;
-                Live shows the BLE spike, Data has the Export button
-ReflexWhoopTests/  unit tests + WHOOP API fixture JSON (89 tests)
-mcp-server/        Python MCP server for Claude to query your data — done, see
-                   mcp-server/README.md
-docs/              design doc, decisions log
-scripts/           project generator (see Building, above)
-```
+| Doc | What's in it |
+|---|---|
+| [AGENTS.md](AGENTS.md) | commands, rules that must never break, conventions |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | sources, storage, sync, analysis, export, limits |
+| [docs/PROTOCOL-GEN5.md](docs/PROTOCOL-GEN5.md) | the band's Bluetooth protocol, safety rails, findings |
+| [docs/DESIGN-SYSTEM.md](docs/DESIGN-SYSTEM.md) | colour, type, components, screens, copy rules |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | non-obvious choices and why |
+| [docs/ADR-001-data-sovereignty.md](docs/ADR-001-data-sovereignty.md) | why the archive is source-neutral |
+
+## Status and limits
+
+Working: WHOOP sync with backfill and re-scoring, baselines, unusual days and illness
+flags, correlations, live heart rate from the band, export, and the MCP server.
+
+Not yet:
+
+- **Heart rate is the only decoded band signal.** Beat-to-beat intervals, optical and
+  motion data aren't decoded, so there's no HRV or breathing rate from the band.
+- **Readiness is hidden.** The app's own readiness score relies on WHOOP's capped
+  sleep-debt figure, so it stays off-screen until that's rebuilt
+  ([why](docs/DECISIONS.md#readiness-hidden-until-sleep-debt-is-rebuilt)).
+- **No widgets, iCloud or HealthKit.** They need paid-account capabilities.
+- **Background recording can be interrupted.** iOS can suspend or end background apps.
+- **A WHOOP firmware update can break decoding.** Raw bytes are always kept, so a fixed
+  decoder can rebuild the history.

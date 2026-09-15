@@ -3,10 +3,11 @@
 # source files (it walks ReflexWhoop/ and ReflexWhoopTests/ on disk and rebuilds
 # the group tree + compile-sources list each time) — do not hand-edit the .xcodeproj.
 #
-# No xcodegen/tuist available in this environment (Homebrew's prefix is owned by
-# root here, so `brew install xcodegen` can't run without a password prompt this
-# script can't answer) — hence a plain Ruby script against the `xcodeproj` gem
-# (installed with `gem install --user-install xcodeproj`, no sudo needed).
+# A plain Ruby script against the `xcodeproj` gem rather than xcodegen/tuist:
+# `gem install --user-install xcodeproj` needs no Homebrew and no sudo.
+#
+# To sign under your own Apple ID, set both (a bundle ID is unique per team):
+#   DEVELOPMENT_TEAM=ABCDE12345 BUNDLE_ID=com.example.reflexwhoop ruby scripts/generate_project.rb
 
 require 'xcodeproj'
 
@@ -14,7 +15,8 @@ ROOT = File.expand_path('..', __dir__)
 PROJECT_PATH = File.join(ROOT, 'ReflexWhoop.xcodeproj')
 APP_NAME = 'ReflexWhoop'
 TEST_NAME = 'ReflexWhoopTests'
-BUNDLE_ID = 'com.reflexwhoop.app'
+BUNDLE_ID = ENV.fetch('BUNDLE_ID', 'com.reflexwhoop.app')
+DEVELOPMENT_TEAM = ENV.fetch('DEVELOPMENT_TEAM', 'YOUR_TEAM_ID')
 # iOS 26: the app runs on one iPhone (iOS 27). The floor removes every
 # #available branch for Liquid Glass, Tab and navigationSubtitle.
 DEPLOYMENT_TARGET = '26.0'
@@ -100,11 +102,9 @@ common_settings = {
   'TARGETED_DEVICE_FAMILY' => '1', # iPhone only
   'CODE_SIGN_STYLE' => 'Automatic',
   'ENABLE_PREVIEWS' => 'YES',
-  # Free Apple ID (Personal Team, per the design doc's constraints section):
-  # no push/iCloud/App Groups, and every on-device build expires after 7 days
-  # and needs re-installing (re-run devicectl install or hit Run in Xcode —
-  # this team ID itself doesn't change).
-  'DEVELOPMENT_TEAM' => 'YOUR_TEAM_ID',
+  # Works with a free Apple ID (Personal Team): no push/iCloud/App Groups, and
+  # every on-device build expires after 7 days and needs re-installing.
+  'DEVELOPMENT_TEAM' => DEVELOPMENT_TEAM,
 }
 
 project.build_configurations.each do |config|

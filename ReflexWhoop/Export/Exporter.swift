@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-/// Writes `Documents/exports/<timestamp>/` per docs/design.md's "Export and
+/// Writes `Documents/exports/<timestamp>/` per docs/ARCHITECTURE.md's "Export and
 /// MCP" section: a CSV per normalized/derived table, a `VACUUM INTO` SQLite
 /// snapshot (safe to copy from a live WAL database, unlike a plain file copy),
 /// untouched raw payloads (`raw_api.jsonl`, `ble_sessions/<id>.bin`), and a

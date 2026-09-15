@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-/// Orchestrates the three sync modes described in docs/design.md's Sync engine
+/// Orchestrates the three sync modes described in docs/ARCHITECTURE.md's Source A
 /// section: per-resource backfill (walks full history via cursor, checkpointed so
 /// killing the app mid-backfill loses at most one page), incremental (7-day
 /// re-scoring lookback, cheap thanks to `RecordDAO`'s content-hash skip), and

@@ -2,7 +2,7 @@
 """Read-only MCP server over a ReflexWhoop export snapshot.
 
 Points at the `reflexwhoop.sqlite` produced by the app's Export button
-(Data tab -> Export data -> Share export), pulled to this Mac via
+(Archive -> Export a copy -> Share), pulled to this Mac via
 AirDrop/Files/Finder. Deliberately does **not** read the live on-device
 database directly — that one has WAL sidecar files this server doesn't
 manage, and a personal MCP server has no business touching your live data
@@ -44,8 +44,8 @@ _DISALLOWED = re.compile(
 def _connect() -> sqlite3.Connection:
     if not DB_PATH.exists():
         raise FileNotFoundError(
-            f"No database at {DB_PATH}. In the app: Data tab -> Export data -> "
-            f"Share export, save reflexwhoop.sqlite to this path (or set "
+            f"No database at {DB_PATH}. In the app: Archive -> Export a copy -> "
+            f"Share, save reflexwhoop.sqlite to this path (or set "
             f"REFLEXWHOOP_DB_PATH to wherever you put it)."
         )
     conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=QUERY_TIMEOUT_SECONDS)
@@ -152,7 +152,7 @@ def trend(metric: str, start: str | None = None, end: str | None = None) -> list
 def correlations(min_n: int = 0) -> list[dict[str, Any]]:
     """Precomputed predictor -> next-day-recovery correlations (Spearman rho,
     sample size, Benjamini-Hochberg-corrected p-value, strength band). This is
-    one person's data — suggestive, not causal; see docs/design.md."""
+    one person's data — suggestive, not causal; see docs/ARCHITECTURE.md."""
     conn = _connect()
     try:
         cursor = conn.execute(
