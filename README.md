@@ -10,6 +10,7 @@
   <img alt="Swift 5" src="https://img.shields.io/badge/Swift-5-F1ECE3?style=flat-square">
   <img alt="SwiftUI and GRDB" src="https://img.shields.io/badge/SwiftUI-GRDB-71C69A?style=flat-square">
   <img alt="Unofficial" src="https://img.shields.io/badge/WHOOP-unofficial-F18D57?style=flat-square">
+  <img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-9198a1?style=flat-square">
 </p>
 
 <p align="center">
@@ -151,3 +152,8 @@ heart rate from the band, export, and the MCP server.
 | No widgets, iCloud or HealthKit | They need capabilities a free Apple ID doesn't grant. |
 | Background recording can be cut short | iOS suspends and terminates background apps; the recording says so. |
 | Firmware can break decoding | The raw bytes are always kept, so a fixed decoder rebuilds the history. |
+
+## Licence
+
+[MIT](LICENSE). WHOOP is a trademark of its owner; this project is not connected to
+them.
