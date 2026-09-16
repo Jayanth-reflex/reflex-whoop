@@ -14,12 +14,18 @@ Homebrew or sudo. Re-run it after adding or removing a file; never hand-edit the
 project. UUIDs are derived from the project's contents (two passes of
 `predictabilize_uuids`), so regenerating an unchanged tree writes an identical file.
 
-### Signing is set by the generator
+### Signing comes from a git-ignored xcconfig
 
 `xcodebuild` can only sign a device build non-interactively with `DEVELOPMENT_TEAM`
-set, so the generator sets it, defaulting to the maintainer's Personal Team. To build
-under another Apple ID, set `DEVELOPMENT_TEAM` and `BUNDLE_ID` when running the
-generator; the bundle ID has to change too, because it's unique per team.
+set, but a team ID identifies one person's developer account and has no place in a
+public repository. The generated project sets neither the team nor a literal bundle
+ID. Both come from `Config/Signing.xcconfig`, applied at the project level, which
+optionally includes `Config/Signing.local.xcconfig`: git-ignored, one line per
+developer. Xcode and `xcodebuild` read it the same way, and regenerating the project
+never disturbs it. Without it, Simulator builds and tests still work.
+
+A fork also sets `REFLEXWHOOP_BUNDLE_ID` there, because a bundle ID can belong to
+only one team.
 
 Xcode's own stored Apple ID login can expire silently ("The login details were
 rejected", or "No Accounts"). The fix is removing and re-adding the account in Xcode →

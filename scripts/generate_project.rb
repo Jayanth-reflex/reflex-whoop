@@ -6,8 +6,8 @@
 # A plain Ruby script against the `xcodeproj` gem rather than xcodegen/tuist:
 # `gem install --user-install xcodeproj` needs no Homebrew and no sudo.
 #
-# To sign under your own Apple ID, set both (a bundle ID is unique per team):
-#   DEVELOPMENT_TEAM=ABCDE12345 BUNDLE_ID=com.example.reflexwhoop ruby scripts/generate_project.rb
+# Signing lives in Config/Signing.xcconfig, not here, so the generated project
+# holds no developer team and regenerating never touches anyone's signing.
 
 require 'xcodeproj'
 
@@ -15,8 +15,6 @@ ROOT = File.expand_path('..', __dir__)
 PROJECT_PATH = File.join(ROOT, 'ReflexWhoop.xcodeproj')
 APP_NAME = 'ReflexWhoop'
 TEST_NAME = 'ReflexWhoopTests'
-BUNDLE_ID = ENV.fetch('BUNDLE_ID', 'com.reflexwhoop.app')
-DEVELOPMENT_TEAM = ENV.fetch('DEVELOPMENT_TEAM', 'YOUR_TEAM_ID')
 # iOS 26: the app runs on one iPhone (iOS 27). The floor removes every
 # #available branch for Liquid Glass, Tab and navigationSubtitle.
 DEPLOYMENT_TARGET = '26.0'
@@ -102,18 +100,22 @@ common_settings = {
   'TARGETED_DEVICE_FAMILY' => '1', # iPhone only
   'CODE_SIGN_STYLE' => 'Automatic',
   'ENABLE_PREVIEWS' => 'YES',
-  # Works with a free Apple ID (Personal Team): no push/iCloud/App Groups, and
-  # every on-device build expires after 7 days and needs re-installing.
-  'DEVELOPMENT_TEAM' => DEVELOPMENT_TEAM,
 }
 
+# DEVELOPMENT_TEAM and the bundle ID come from here, and from the git-ignored
+# Signing.local.xcconfig it includes. Set at the project level so no target
+# setting shadows them.
+config_group = project.main_group.new_group('Config', File.join(ROOT, 'Config'))
+signing_xcconfig = config_group.new_reference(File.join(ROOT, 'Config', 'Signing.xcconfig'))
+
 project.build_configurations.each do |config|
+  config.base_configuration_reference = signing_xcconfig
   config.build_settings.merge!(common_settings)
 end
 
 app_target.build_configurations.each do |config|
   config.build_settings.merge!(
-    'PRODUCT_BUNDLE_IDENTIFIER' => BUNDLE_ID,
+    'PRODUCT_BUNDLE_IDENTIFIER' => '$(REFLEXWHOOP_BUNDLE_ID)',
     'PRODUCT_NAME' => APP_NAME,
     'INFOPLIST_FILE' => "#{APP_NAME}/Info.plist",
     'GENERATE_INFOPLIST_FILE' => 'NO',
@@ -130,7 +132,7 @@ end
 
 test_target.build_configurations.each do |config|
   config.build_settings.merge!(
-    'PRODUCT_BUNDLE_IDENTIFIER' => "#{BUNDLE_ID}.tests",
+    'PRODUCT_BUNDLE_IDENTIFIER' => '$(REFLEXWHOOP_BUNDLE_ID).tests',
     'PRODUCT_NAME' => TEST_NAME,
     'GENERATE_INFOPLIST_FILE' => 'YES',
     'TEST_HOST' => "$(BUILT_PRODUCTS_DIR)/#{APP_NAME}.app/#{APP_NAME}",

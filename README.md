@@ -88,14 +88,17 @@ Keep the client ID and secret for step 3.
 ```bash
 git clone https://github.com/Jayanth-reflex/reflex-whoop.git
 cd reflex-whoop
-gem install --user-install xcodeproj
-DEVELOPMENT_TEAM=YOUR_TEAM_ID BUNDLE_ID=com.yourname.reflexwhoop ruby scripts/generate_project.rb
+cat > Config/Signing.local.xcconfig <<'EOF'
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
+REFLEXWHOOP_BUNDLE_ID = com.yourname.reflexwhoop
+EOF
 open ReflexWhoop.xcodeproj
 ```
 
-Your team ID is in Xcode → Settings → Accounts. Pick your iPhone and press Run. The
-first install also needs one manual step on the phone: Settings → General → VPN &
-Device Management → trust your Apple ID.
+`Signing.local.xcconfig` is git-ignored, so your team never ends up in a commit. Your
+team ID is in Xcode → Settings → Accounts; the bundle ID just has to be one no other
+team uses. Pick your iPhone and press Run. The first install also needs one manual
+step on the phone: Settings → General → VPN & Device Management → trust your Apple ID.
 </details>
 
 <details open>

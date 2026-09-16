@@ -18,3 +18,6 @@ Secrets.plist
 
 # Local-only WHOOP OAuth credentials for dev testing — never commit.
 .secrets.local.json
+
+# Your Apple developer team and any bundle ID override — see Config/Signing.xcconfig.
+Config/Signing.local.xcconfig

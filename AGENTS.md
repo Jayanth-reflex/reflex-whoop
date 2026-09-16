@@ -45,8 +45,12 @@ cd mcp-server && python3 -m venv .venv && .venv/bin/pip install -r requirements.
 ```
 
 The generator writes identical output for an unchanged tree; a regenerate that changes
-`project.pbxproj` without a file being added or removed is a bug. To sign under another
-Apple ID: `DEVELOPMENT_TEAM=… BUNDLE_ID=… ruby scripts/generate_project.rb`.
+`project.pbxproj` without a file being added or removed is a bug.
+
+Signing comes from `Config/Signing.xcconfig`, which includes the git-ignored
+`Config/Signing.local.xcconfig` holding `DEVELOPMENT_TEAM` (and, for a fork,
+`REFLEXWHOOP_BUNDLE_ID`). Simulator builds and tests need neither; a device build
+needs the team.
 
 ## Layout
 
@@ -64,6 +68,7 @@ ReflexWhoop/
   UI/         DesignSystem/ plus one folder per tab: Today, Trends, Metrics, Band, Archive, Onboarding
 ReflexWhoopTests/   XCTest, Fixtures/*.json (synthetic)
 mcp-server/         read-only MCP server and Parquet converter
+Config/             Signing.xcconfig (committed) + Signing.local.xcconfig (yours, ignored)
 scripts/            generate_project.rb, sample_data.py
 docs/assets/        palette and screenshot images used by the docs
 ```
@@ -98,7 +103,8 @@ them; none may be relaxed to make a change easier.
    instead ([contract](docs/ARCHITECTURE.md#the-source-neutral-contract)).
 6. **No secrets or personal data in git.**
    - WHOOP client ID, secret and tokens live only in the Keychain.
-   - `.secrets.local.json` is gitignored.
+   - `.secrets.local.json` and `Config/Signing.local.xcconfig` are gitignored; no
+     developer team ID goes in the project, the generator or any committed file.
    - Never commit a database copied off a device, an export, a screenshot of real
      data, device or simulator identifiers, or a real name or email.
    - Fixtures are synthetic.

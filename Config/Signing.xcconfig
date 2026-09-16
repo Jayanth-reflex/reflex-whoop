@@ -1,0 +1,14 @@
+// Code signing for ReflexWhoop. Nothing personal belongs in this file.
+//
+// Put your Apple developer team in Config/Signing.local.xcconfig, which git
+// ignores. A fork also needs a bundle ID of its own, since one is unique per team:
+//
+//   DEVELOPMENT_TEAM = ABCDE12345
+//   REFLEXWHOOP_BUNDLE_ID = com.example.reflexwhoop
+//
+// Your team ID is in Xcode → Settings → Accounts. Without the local file the app
+// still builds and tests on the Simulator; only a device build needs a team.
+
+REFLEXWHOOP_BUNDLE_ID = com.reflexwhoop.app
+
+#include? "Signing.local.xcconfig"
