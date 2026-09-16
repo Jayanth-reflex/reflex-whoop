@@ -7,6 +7,18 @@ captured from a worn band and kept in `ingest_inbox`.
 
 **Read [Safety rails](#safety-rails) before changing anything in `ReflexWhoop/Ble/`.**
 
+[Safety rails](#safety-rails) · [Connection](#connection) · [Envelope](#envelope-confirmed) ·
+[Packet types](#packet-types) · [Not decoded yet](#not-decoded-yet) ·
+[Open questions](#open-questions) · [Session log](#session-log)
+
+| At a glance | |
+|---|---|
+| Service | `fd4b0001-cce1-4033-93ce-002d5875f58a` (Gen 5; Gen 4's `6108…` doesn't apply) |
+| Frames parsed with valid CRCs | 8,054 of 8,054, in the two sessions audited frame by frame |
+| Decoded | realtime heart rate (`0x28`, one byte), device metadata strings (`fd4b0007`) |
+| Not decoded | RR intervals, optical (R21), IMU, r22 |
+| Commands the app can send | 8, all read-only or live-stream ([allowlist](#safety-rails)) |
+
 ## Safety rails
 
 The band keeps a flash read cursor that is shared with the official WHOOP app and

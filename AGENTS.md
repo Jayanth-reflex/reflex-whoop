@@ -8,6 +8,9 @@ the WHOOP API, records live heart rate from the band over read-only Bluetooth, a
 analyses both from a local SQLite archive. A Python MCP server in `mcp-server/` queries
 exported snapshots.
 
+[Commands](#commands) · [Layout](#layout) · [Rules](#rules-that-must-never-break) ·
+[Conventions](#conventions) · [Workflow](#workflow) · [Gotchas](#gotchas)
+
 | Read before | Doc |
 |---|---|
 | any change | this file |
@@ -31,6 +34,11 @@ xcodebuild test -project ReflexWhoop.xcodeproj -scheme ReflexWhoop \
 xcodebuild test -project ReflexWhoop.xcodeproj -scheme ReflexWhoop \
   -destination 'platform=iOS Simulator,name=iPhone 17' \
   -only-testing:ReflexWhoopTests/MetricTests/testSkinTemperatureFollowsTheTemperatureUnit
+
+# Fill a booted simulator with synthetic data, so a screen can be checked
+# without real readings on it (the app must have launched once to create the DB)
+DB="$(xcrun simctl get_app_container booted com.reflexwhoop.app data)"
+python3 scripts/sample_data.py | sqlite3 "$DB/Documents/reflexwhoop.sqlite"
 
 # MCP server
 cd mcp-server && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
@@ -56,7 +64,8 @@ ReflexWhoop/
   UI/         DesignSystem/ plus one folder per tab: Today, Trends, Metrics, Band, Archive, Onboarding
 ReflexWhoopTests/   XCTest, Fixtures/*.json (synthetic)
 mcp-server/         read-only MCP server and Parquet converter
-scripts/            generate_project.rb
+scripts/            generate_project.rb, sample_data.py
+docs/assets/        palette and screenshot images used by the docs
 ```
 
 ## Rules that must never break
@@ -143,6 +152,9 @@ them; none may be relaxed to make a change easier.
   `DECISIONS.md` entry; a structural change updates `ARCHITECTURE.md`; any new band
   finding goes into `PROTOCOL-GEN5.md` with its confidence and evidence. Don't create
   new plan or spec files in `docs/`.
+- **Screenshots come from sample data.** `docs/assets/screens/*` are simulator
+  captures of `scripts/sample_data.py`, never of anyone's readings. Re-capture them
+  the same way if a screen changes shape.
 - **Commits:** a plain-English imperative subject that says what changed for the user
   or the codebase ("Show skin temperature as its change from normal, in Celsius or
   Fahrenheit"). No type prefixes.

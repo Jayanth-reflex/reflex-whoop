@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="872" height="328" viewBox="0 0 872 328" role="img" aria-label="Onyx colour tokens">
+<rect width="872" height="328" rx="12" fill="#0A0A09"/>
+<g font-family="ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif">
+<rect x="16" y="16" width="52" height="52" rx="10" fill="#000000" stroke="#2A2926"/>
+<text x="80" y="36" fill="#F1ECE3" font-size="13" font-weight="600">onyx</text>
+<text x="80" y="52" fill="#D3BE99" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#000000</text>
+<text x="80" y="68" fill="#8A857C" font-size="11">background</text>
+<rect x="226" y="16" width="52" height="52" rx="10" fill="#121110" stroke="#2A2926"/>
+<text x="290" y="36" fill="#F1ECE3" font-size="13" font-weight="600">surface</text>
+<text x="290" y="52" fill="#D3BE99" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#121110</text>
+<text x="290" y="68" fill="#8A857C" font-size="11">rows, cards</text>
+<rect x="436" y="16" width="52" height="52" rx="10" fill="#1A1917" stroke="#2A2926"/>
+<text x="500" y="36" fill="#F1ECE3" font-size="13" font-weight="600">surfaceRaised</text>
+<text x="500" y="52" fill="#D3BE99" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#1A1917</text>
+<text x="500" y="68" fill="#8A857C" font-size="11">sheets</text>
+<rect x="646" y="16" width="52" height="52" rx="10" fill="#F1ECE3" stroke="#2A2926"/>
+<text x="710" y="36" fill="#F1ECE3" font-size="13" font-weight="600">ivory</text>
+<text x="710" y="52" fill="#D3BE99" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#F1ECE3</text>
+<text x="710" y="68" fill="#8A857C" font-size="11">text</text>
+<rect x="16" y="90" width="52" height="52" rx="10" fill="#D3BE99" stroke="#2A2926"/>
+<text x="80" y="110" fill="#F1ECE3" font-size="13" font-weight="600">champagne</text>
+<text x="80" y="126" fill="#D3BE99" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#D3BE99</text>
+<text x="80" y="142" fill="#8A857C" font-size="11">brand, tint</text>
+<rect x="226" y="90" width="52" height="52" rx="10" fill="#15120D" stroke="#2A2926"/>
+<text x="290" y="110" fill="#F1ECE3" font-size="13" font-weight="600">onChampagne</text>
+<text x="290" y="126" fill="#D3BE99" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#15120D</text>
+<text x="290" y="142" fill="#8A857C" font-size="11">on champagne</text>
+<rect x="436" y="90" width="52" height="52" rx="10" fill="#71C69A" stroke="#2A2926"/>
+<text x="500" y="110" fill="#F1ECE3" font-size="13" font-weight="600">jade</text>
+<text x="500" y="126" fill="#D3BE99" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#71C69A</text>
+<text x="500" y="142" fill="#8A857C" font-size="11">high recovery</text>
+<rect x="646" y="90" width="52" height="52" rx="10" fill="#F1BF5B" stroke="#2A2926"/>
+<text x="710" y="110" fill="#F1ECE3" font-size="13" font-weight="600">amber</text>
+<text x="710" y="126" fill="#D3BE99" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#F1BF5B</text>
+<text x="710" y="142" fill="#8A857C" font-size="11">moderate</text>
+<rect x="16" y="164" width="52" height="52" rx="10" fill="#DB6D60" stroke="#2A2926"/>
+<text x="80" y="184" fill="#F1ECE3" font-size="13" font-weight="600">garnet</text>
+<text x="80" y="200" fill="#D3BE99" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#DB6D60</text>
+<text x="80" y="216" fill="#8A857C" font-size="11">low, destructive</text>
+<rect x="226" y="164" width="52" height="52" rx="10" fill="#F18D57" stroke="#2A2926"/>
+<text x="290" y="184" fill="#F1ECE3" font-size="13" font-weight="600">sunstone</text>
+<text x="290" y="200" fill="#D3BE99" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#F18D57</text>
+<text x="290" y="216" fill="#8A857C" font-size="11">unusual</text>
+<rect x="436" y="164" width="52" height="52" rx="10" fill="#E28DAE" stroke="#2A2926"/>
+<text x="500" y="184" fill="#F1ECE3" font-size="13" font-weight="600">roseQuartz</text>
+<text x="500" y="200" fill="#D3BE99" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#E28DAE</text>
+<text x="500" y="216" fill="#8A857C" font-size="11">band heart rate</text>
+<rect x="646" y="164" width="52" height="52" rx="10" fill="#86CADF" stroke="#2A2926"/>
+<text x="710" y="184" fill="#F1ECE3" font-size="13" font-weight="600">sleepREM</text>
+<text x="710" y="200" fill="#D3BE99" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#86CADF</text>
+<text x="710" y="216" fill="#8A857C" font-size="11">REM</text>
+<rect x="16" y="238" width="52" height="52" rx="10" fill="#658DC9" stroke="#2A2926"/>
+<text x="80" y="258" fill="#F1ECE3" font-size="13" font-weight="600">sleepLight</text>
+<text x="80" y="274" fill="#D3BE99" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#658DC9</text>
+<text x="80" y="290" fill="#8A857C" font-size="11">light sleep</text>
+<rect x="226" y="238" width="52" height="52" rx="10" fill="#555594" stroke="#2A2926"/>
+<text x="290" y="258" fill="#F1ECE3" font-size="13" font-weight="600">sleepDeep</text>
+<text x="290" y="274" fill="#D3BE99" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">#555594</text>
+<text x="290" y="290" fill="#8A857C" font-size="11">deep sleep</text>
+</g></svg>

@@ -5,6 +5,11 @@ How ReflexWhoop is put together, as built. Why particular choices were made is i
 rails are in [`PROTOCOL-GEN5.md`](PROTOCOL-GEN5.md); the visual system is in
 [`DESIGN-SYSTEM.md`](DESIGN-SYSTEM.md).
 
+[Principles](#principles) · [Data flow](#data-flow) · [WHOOP API](#source-a-whoop-api-v2) ·
+[The band](#source-b-the-band-over-bluetooth) · [Storage](#storage) ·
+[Analysis](#analysis) · [Neutral contract](#the-source-neutral-contract) ·
+[App and UI](#app-and-ui) · [Export and MCP](#export-and-mcp) · [Limits](#limits)
+
 ## Principles
 
 1. **The archive is sacred.** No code path destroys collected history, in any build
@@ -26,17 +31,32 @@ rails are in [`PROTOCOL-GEN5.md`](PROTOCOL-GEN5.md); the visual system is in
 
 ## Data flow
 
-```
- SOURCES (adapters)            INBOX            NEUTRAL LAYER          ANALYSIS + UI
-┌───────────────────┐                      ┌──────────────────┐   ┌──────────────────┐
-│ WhoopClient       │   ┌──────────────┐   │ daily_metrics    │   │ BaselineEngine   │
-│  (ApiSyncEngine)  │──▶│ ingest_inbox │──▶│  (one row/day)   │──▶│ AnomalyEngine    │
-│                   │   │ append-only, │   │                  │   │ CorrelationEngine│
-│ BandConnection    │──▶│ raw bytes    │──▶│ ts_chunk         │   │ ReadinessEngine  │
-│  (SpikeRecorder)  │   └──────────────┘   │ ts_rollup_minute │   │                  │
-└───────────────────┘   ApiNormalizer      │ session_metrics  │   │ SwiftUI screens  │
-                        BleNormalizer      └──────────────────┘   │ Export → MCP     │
-                                                                  └──────────────────┘
+```mermaid
+flowchart LR
+    subgraph sources["Sources · may know what WHOOP is"]
+        api["WHOOP API v2<br>WhoopClient · ApiSyncEngine"]
+        ble["WHOOP 5.0 band<br>BandConnection · SpikeRecorder"]
+    end
+    subgraph inbox["Inbox · append-only"]
+        raw["ingest_inbox<br>raw bytes, never deleted"]
+    end
+    subgraph neutral["Neutral layer · no vendor semantics"]
+        daily["daily_metrics<br>one row per day"]
+        ts["ts_chunk · ts_rollup_minute<br>session_metrics"]
+    end
+    subgraph reads["Analysis and UI · WHOOP-blind"]
+        engines["BaselineEngine · AnomalyEngine<br>CorrelationEngine · ReadinessEngine"]
+        ui["SwiftUI screens"]
+        out["Export → MCP server"]
+    end
+    api --> raw
+    ble --> raw
+    raw -- ApiNormalizer --> daily
+    raw -- BleNormalizer --> ts
+    daily --> engines
+    ts --> engines
+    engines --> ui
+    engines --> out
 ```
 
 ## Source A: WHOOP API v2

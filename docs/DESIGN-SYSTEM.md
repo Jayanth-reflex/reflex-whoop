@@ -5,7 +5,12 @@ Black and champagne, gem tones for data. iPhone only, dark only
 colours are asset-catalog colour sets with generated Swift symbols
 (`Color(.champagne)`, `.sunstone`, …).
 
+[Colour](#colour) · [Type](#type) · [Components](#components) · [Screens](#screens) ·
+[Copy rules](#copy-rules) · [App icon](#app-icon) · [Errors](#errors)
+
 ## Colour
+
+![The Onyx colour tokens](assets/palette.svg)
 
 | Token | Value | Use |
 |---|---|---|
