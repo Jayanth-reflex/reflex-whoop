@@ -6,10 +6,19 @@ import UIKit
 #endif
 
 /// Drives the WHOOP OAuth2 authorization-code flow and keeps the access token
-/// fresh. An `actor` so `refreshIfNeeded()` calls from concurrent requests (e.g.
-/// two 401s racing each other) serialize — spending WHOOP's rotating refresh
-/// token twice concurrently would strand one caller with a dead token and no way
-/// back in short of a full re-login.
+/// fresh.
+///
+/// WHOOP rotates the refresh token on every use, so two refreshes must never be
+/// outstanding at once: the second spends a token the first already invalidated,
+/// which fails, and if both somehow land then one of the two rotated tokens is
+/// orphaned and the next refresh has nothing valid to send — no way back short of
+/// a full re-login.
+///
+/// Being an `actor` does not achieve that on its own. An actor yields its executor
+/// at every `await`, so two callers can both pass the expiry check and both start a
+/// request while the first is suspended in `URLSession`. `refreshOnce()` is what
+/// actually serializes them, by holding the one in-flight refresh for later callers
+/// to await.
 actor WhoopAuth {
     enum AuthError: LocalizedError {
         case missingCredentials
@@ -32,6 +41,9 @@ actor WhoopAuth {
     }
 
     private let urlSession: URLSession
+
+    /// Non-nil while a refresh is outstanding. See `refreshOnce()`.
+    private var refreshInFlight: Task<Void, Error>?
 
     init(urlSession: URLSession = .shared) {
         self.urlSession = urlSession
@@ -69,15 +81,37 @@ actor WhoopAuth {
     func refreshIfNeeded() async throws {
         guard let tokens = try TokenStore.loadTokens() else { throw AuthError.notAuthenticated }
         guard tokens.isExpired else { return }
-
-        let (clientID, clientSecret) = try requireCredentialsSync()
-        try await refresh(refreshToken: tokens.refreshToken, clientID: clientID, clientSecret: clientSecret)
+        try await refreshOnce()
     }
 
     /// Forces a refresh regardless of the stored expiry — used by `WhoopClient`
     /// after an unexpected 401, in case the token was revoked or the local expiry
     /// estimate drifted from WHOOP's actual clock.
     func forceRefresh() async throws {
+        try await refreshOnce()
+    }
+
+    /// The single refresh allowed to be in flight. Everything that refreshes goes
+    /// through here, so overlapping callers await one request rather than each
+    /// spending the same rotating token.
+    ///
+    /// Storing the task and awaiting it are both reached without an intervening
+    /// `await`, so no second caller can slip between them and start its own.
+    private func refreshOnce() async throws {
+        if let inFlight = refreshInFlight {
+            try await inFlight.value
+            return
+        }
+
+        let task = Task { try await performRefresh() }
+        refreshInFlight = task
+        defer { refreshInFlight = nil }
+        try await task.value
+    }
+
+    /// Reads the tokens itself rather than taking them from the caller: by the time
+    /// this runs, a refresh that finished moments ago may already have replaced them.
+    private func performRefresh() async throws {
         guard let tokens = try TokenStore.loadTokens() else { throw AuthError.notAuthenticated }
         let (clientID, clientSecret) = try requireCredentialsSync()
         try await refresh(refreshToken: tokens.refreshToken, clientID: clientID, clientSecret: clientSecret)

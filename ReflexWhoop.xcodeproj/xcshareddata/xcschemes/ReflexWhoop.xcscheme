@@ -41,7 +41,7 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "2EEB6A0B8D893B82AF12B78CB5A29771"
+               BlueprintIdentifier = "FCB5BAD559DE39F3C63DBF47AF591AB6"
                BuildableName = "ReflexWhoopTests.xctest"
                BlueprintName = "ReflexWhoopTests"
                ReferencedContainer = "container:ReflexWhoop.xcodeproj">

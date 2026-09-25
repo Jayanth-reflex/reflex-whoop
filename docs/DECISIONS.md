@@ -116,6 +116,26 @@ HTTP Basic header. WHOOP doesn't document which it expects; the body worked on t
 first live test. If WHOOP starts rejecting it, switch `WhoopAuth.postTokenRequest` to
 Basic auth first.
 
+### An actor is not enough to serialize the token refresh
+
+WHOOP rotates the refresh token on every use, so a second refresh that overlaps the
+first spends a token the first already invalidated. `WhoopAuth` was made an `actor`
+for exactly this reason, and it does not work: an actor releases its executor at
+every `await`, so while the first caller is suspended inside `URLSession` a second
+walks straight through the expiry check and sends the same token again. The phone's
+`sync_log` has it — two runs starting in the same second, one succeeding with six
+requests, the other failing `Token exchange failed (400): invalid_request`.
+
+Every refresh now goes through `refreshOnce()`, which keeps the one in-flight
+`Task` for later callers to await. Storing the task and awaiting it are reached with
+no `await` between them, so no caller can slip in and start a second request.
+`WhoopAuthRefreshTests` drives four concurrent refreshes through a stubbed session
+and asserts WHOOP is called once; before the change it was called four times.
+
+The failure was recoverable in practice, because the caller that won still wrote a
+good token pair. It wouldn't be if both landed: one of the two rotated tokens is then
+orphaned, and nothing valid remains to refresh with short of a full re-login.
+
 ### Foreground sync checks `auth.isSignedIn()` directly
 
 Not the cached `isSignedIn` property. The `.task` that syncs on foreground and the one
