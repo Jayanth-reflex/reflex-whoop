@@ -31,6 +31,25 @@ Xcode's own stored Apple ID login can expire silently ("The login details were
 rejected", or "No Accounts"). The fix is removing and re-adding the account in Xcode →
 Settings → Accounts; it needs the password interactively and can't be scripted.
 
+### A daily launchd check, not a weekly alarm
+
+A free Apple ID's provisioning profile lasts seven days; after that the app won't
+launch, though its container survives. `scripts/refresh_device_install.sh` rebuilds
+with `-allowProvisioningUpdates`, which mints a fresh profile, and reinstalls over the
+existing app. Same bundle ID and same certificate make that an upgrade install, so the
+archive comes through untouched.
+
+The launchd agent runs daily and the script decides whether five days have passed,
+rather than launchd firing every six days. An alarm that lands while the phone is
+elsewhere is a missed week; a daily check just tries again tomorrow, still inside the
+window. Last-install time, backups and logs live under
+`~/Library/Application Support/ReflexWhoop` and `~/Library/Logs/ReflexWhoop`, outside
+the repository — the generated plist holds a local path, so it isn't committed either.
+
+The app's `Documents` directory is copied off the phone before each install. The
+upgrade-install guarantee is Apple's, not ours, and the archive is the one thing here
+that can't be rebuilt.
+
 ### Storage in Documents, not Application Support
 
 `UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace` expose only

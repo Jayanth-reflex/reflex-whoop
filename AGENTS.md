@@ -40,6 +40,11 @@ xcodebuild test -project ReflexWhoop.xcodeproj -scheme ReflexWhoop \
 DB="$(xcrun simctl get_app_container booted com.reflexwhoop.app data)"
 python3 scripts/sample_data.py | sqlite3 "$DB/Documents/reflexwhoop.sqlite"
 
+# Keep the phone's free-Apple-ID build alive: rebuild, re-sign and reinstall,
+# backing up the app's Documents directory first. --if-due acts only past five days.
+scripts/refresh_device_install.sh
+scripts/install_refresh_agent.sh            # daily launchd check; --status, --uninstall
+
 # MCP server
 cd mcp-server && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
@@ -69,7 +74,7 @@ ReflexWhoop/
 ReflexWhoopTests/   XCTest, Fixtures/*.json (synthetic)
 mcp-server/         read-only MCP server and Parquet converter
 Config/             Signing.xcconfig (committed) + Signing.local.xcconfig (yours, ignored)
-scripts/            generate_project.rb, sample_data.py
+scripts/            generate_project.rb, sample_data.py, the device-refresh pair
 docs/assets/        palette and screenshot images used by the docs
 ```
 
@@ -172,7 +177,11 @@ them; none may be relaxed to make a change easier.
 - `DatabasePool` needs a file; tests use temp files, not `:memory:`.
 - Device builds need an Apple ID signed into Xcode. "No Accounts" or "login details
   were rejected" means re-adding the account in Xcode → Settings → Accounts.
-- A free Apple ID build expires after 7 days. Reinstalling loses no data.
+- A free Apple ID build expires after 7 days. Reinstalling loses no data, because the
+  same bundle ID and certificate make it an upgrade install;
+  `scripts/refresh_device_install.sh` automates it and backs the archive up first
+  ([why](docs/DECISIONS.md#a-daily-launchd-check-not-a-weekly-alarm)). The phone has
+  to be paired and trusted, which needs a cable and a tap on it once.
 - Bluetooth doesn't work in the Simulator. Band screens there show their unavailable
   states; decoding is tested with captured frames in `FramingTests` and
   `RealtimeHRDecoderTests`.

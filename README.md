@@ -128,6 +128,11 @@ Swift, SwiftUI, Swift Charts and [GRDB](https://github.com/groue/GRDB.swift), wi
 other app dependencies. `scripts/sample_data.py` fills a simulator with synthetic
 data, so you can work on a screen without putting real readings on it.
 
+On a free Apple ID a build stops launching after seven days.
+`scripts/install_refresh_agent.sh` adds a launchd agent that checks daily and, once the
+build is five days old, rebuilds and reinstalls it — an upgrade install, so the archive
+survives, and it's copied off the phone first regardless.
+
 **Start here:** [AGENTS.md](AGENTS.md) — the commands, the rules that must never
 break, and the conventions the code follows. Claude Code reads it through `CLAUDE.md`.
 
