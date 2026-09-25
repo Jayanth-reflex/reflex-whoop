@@ -44,6 +44,7 @@ python3 scripts/sample_data.py | sqlite3 "$DB/Documents/reflexwhoop.sqlite"
 # backing up the app's Documents directory first. --if-due acts only past five days.
 scripts/refresh_device_install.sh
 scripts/install_refresh_agent.sh            # daily launchd check; --status, --uninstall
+# The agent needs the checkout outside ~/Desktop, ~/Documents and ~/Downloads.
 
 # MCP server
 cd mcp-server && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt

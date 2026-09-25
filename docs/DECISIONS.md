@@ -46,9 +46,18 @@ window. Last-install time, backups and logs live under
 `~/Library/Application Support/ReflexWhoop` and `~/Library/Logs/ReflexWhoop`, outside
 the repository — the generated plist holds a local path, so it isn't committed either.
 
-The app's `Documents` directory is copied off the phone before each install. The
-upgrade-install guarantee is Apple's, not ours, and the archive is the one thing here
-that can't be rebuilt.
+The database is copied off the phone before each install. The upgrade-install
+guarantee is Apple's, not ours, and the archive is the one thing here that can't be
+rebuilt. Only the SQLite file, its write-ahead log and its shared-memory file: past
+exports also live in `Documents`, and they are large and derived. A copy that fails
+stops the run, because a locked phone and an app that was never installed report the
+same error, and guessing wrong means installing over an archive with no copy of it.
+
+The checkout has to live somewhere a launchd agent can read. A user agent holds no TCC
+grant and can't be prompted for one, so under `~/Desktop`, `~/Documents` or
+`~/Downloads` it fails with `Operation not permitted` before `xcodebuild` even starts —
+while the same script run from a terminal succeeds, because the terminal has a grant.
+`~/Developer` is fine.
 
 ### Storage in Documents, not Application Support
 

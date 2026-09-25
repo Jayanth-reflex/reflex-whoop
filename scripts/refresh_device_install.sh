@@ -22,7 +22,7 @@
 #   REFLEXWHOOP_DEVICE        device name or UDID, same as --device
 #   REFLEXWHOOP_STATE_DIR     state, backups and logs (default ~/Library/Application Support/ReflexWhoop)
 #   REFLEXWHOOP_REFRESH_DAYS  age at which --if-due acts (default 5)
-#   REFLEXWHOOP_KEEP_BACKUPS  backups to retain (default 8)
+#   REFLEXWHOOP_KEEP_BACKUPS  backups to retain (default 5)
 
 set -euo pipefail
 
@@ -32,7 +32,8 @@ readonly BACKUP_DIR="$STATE_DIR/backups"
 readonly STAMP_FILE="$STATE_DIR/last-install"
 readonly DERIVED_DATA="$HOME/Library/Caches/ReflexWhoop/DerivedData"
 readonly REFRESH_DAYS="${REFLEXWHOOP_REFRESH_DAYS:-5}"
-readonly KEEP_BACKUPS="${REFLEXWHOOP_KEEP_BACKUPS:-8}"
+readonly KEEP_BACKUPS="${REFLEXWHOOP_KEEP_BACKUPS:-5}"
+readonly DB_FILE="reflexwhoop.sqlite"
 
 device="${REFLEXWHOOP_DEVICE:-}"
 if_due=0
@@ -99,21 +100,43 @@ bundle_id() {
     | awk -F' = ' '/ PRODUCT_BUNDLE_IDENTIFIER = /{print $2; exit}'
 }
 
-# Pull the app's Documents directory — the SQLite file plus its write-ahead log —
-# to a timestamped folder before installing over it. Best effort: a first install
-# has no container yet, and that is not a reason to stop.
+# Pull the database off the phone to a timestamped folder before installing over it:
+# the SQLite file, and the write-ahead log and shared-memory file that go with it,
+# since a WAL holds commits the main file hasn't absorbed yet.
+#
+# Only those three. Documents also holds past exports, which are large and derived
+# from the database anyway; copying them would multiply every backup by their size.
+#
+# A missing -wal or -shm is normal — a cleanly closed database has neither. A missing
+# main file is not, and stops the run. The reasons a copy fails are mostly
+# indistinguishable from each other (a locked phone and an app that was never installed
+# both come back as an error), and guessing wrong means installing over an archive with
+# no copy of it. A genuine first install says so with --no-backup.
+#
+# Note --destination names a file, not a folder, when --source is a file.
 back_up_archive() {
-  local udid="$1" bundle="$2" destination
+  local udid="$1" bundle="$2" destination problem file
   destination="$BACKUP_DIR/$(date '+%Y%m%d-%H%M%S')"
   mkdir -p "$destination"
-  if xcrun devicectl device copy from --device "$udid" \
-       --domain-type appDataContainer --domain-identifier "$bundle" \
-       --source Documents --destination "$destination" --quiet >/dev/null 2>&1; then
-    log "archive backed up to $destination"
-  else
-    rmdir "$destination" 2>/dev/null || true
-    log "no archive to back up yet (app not installed, or the phone refused the copy)"
+
+  copy_out() {
+    xcrun devicectl device copy from --device "$udid" \
+      --domain-type appDataContainer --domain-identifier "$bundle" \
+      --source "Documents/$1" --destination "$destination/$1" --quiet 2>&1 >/dev/null
+  }
+
+  if ! problem="$(copy_out "$DB_FILE")"; then
+    rm -rf "$destination"
+    log "could not copy the archive off the phone:"
+    printf '%s\n' "$problem" | sed 's/^/    /'
+    fail "not installing over an archive that isn't backed up. Fix the above, or pass --no-backup if the app has never been installed."
   fi
+
+  for file in "$DB_FILE-wal" "$DB_FILE-shm"; do
+    copy_out "$file" >/dev/null 2>&1 || true
+  done
+
+  log "archive backed up to $destination ($(du -sh "$destination" | cut -f1))"
 }
 
 prune_backups() {
@@ -166,8 +189,11 @@ main() {
   [ -d "$app" ] || fail "built, but $app is missing."
 
   log "installing…"
-  xcrun devicectl device install app --device "$device" "$app" --quiet >/dev/null \
-    || fail "install failed. Is the phone unlocked and on the same network?"
+  local problem
+  if ! problem="$(xcrun devicectl device install app --device "$device" "$app" --quiet 2>&1 >/dev/null)"; then
+    printf '%s\n' "$problem" | sed 's/^/    /'
+    fail "install failed — see above. A locked phone is the usual cause."
+  fi
 
   date +%s > "$STAMP_FILE"
   prune_backups
