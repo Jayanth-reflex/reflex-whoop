@@ -40,6 +40,27 @@ final class BleNormalizerTests: XCTestCase {
         }
     }
 
+    /// The inbox holds hundreds of thousands of BLE rows and only a handful are ever
+    /// undecoded. With no statistics, SQLite answers `source = ?` from
+    /// `idx_inbox_source_kind`, which matches nearly every row, and `processPending`
+    /// runs the window check once per session inside its write transaction. On the
+    /// phone — 873k rows, 61 sessions — that pegged a core for ~50 s and iOS killed
+    /// the app for CPU use. Both undecoded queries must seek the undecoded index.
+    func testUndecodedQueriesSeekTheUndecodedIndex() throws {
+        let queries: [(sql: String, arguments: StatementArguments)] = [
+            (BleNormalizer.undecodedInWindowSQL, ["ble", 0, Int64.max]),
+            (BleNormalizer.undecodedSQL, ["ble"]),
+        ]
+        try database.dbPool.read { db in
+            for query in queries {
+                let plan = try Row.fetchAll(db, sql: "EXPLAIN QUERY PLAN " + query.sql, arguments: query.arguments)
+                    .map { $0["detail"] as String }
+                    .joined(separator: " / ")
+                XCTAssertTrue(plan.contains("idx_inbox_undecoded"), "full inbox walk: \(plan)")
+            }
+        }
+    }
+
     func testDecodesHeartRateFramesIntoSamplesAndMetrics() throws {
         try insertSession(id: "s1", start: 1000, end: 1100)
         for (offset, bpm) in [(0, UInt8(60)), (1, 70), (2, 80)] {

@@ -119,13 +119,31 @@ enum BleNormalizer {
         }
     }
 
+    // Both undecoded queries name their index. The inbox is hundreds of thousands of
+    // BLE rows with a handful undecoded, and SQLite, holding no statistics, answers
+    // `source = ?` from `idx_inbox_source_kind` instead — a walk of nearly the whole
+    // table. `hasUndecodedRows` runs once per session inside `processPending`'s write
+    // transaction, so on the phone that held the write lock and a full core for ~50 s
+    // until iOS killed the app for CPU use.
+    //
+    // `INDEXED BY` rather than a planner hint because a silent fallback is the thing
+    // to rule out: if the index is ever renamed or dropped, these statements fail to
+    // prepare and the tests say so, instead of the app quietly walking the table again.
+
+    static let undecodedInWindowSQL = """
+        SELECT COUNT(*) FROM ingest_inbox INDEXED BY idx_inbox_undecoded
+        WHERE source = ? AND decoded_at IS NULL AND received_at >= ? AND received_at <= ?
+        """
+
+    static let undecodedSQL = """
+        SELECT seq, received_at FROM ingest_inbox INDEXED BY idx_inbox_undecoded
+        WHERE source = ? AND decoded_at IS NULL
+        """
+
     private static func hasUndecodedRows(_ db: GRDB.Database, window: SessionWindow) throws -> Bool {
         try Int.fetchOne(
             db,
-            sql: """
-            SELECT COUNT(*) FROM ingest_inbox
-            WHERE source = ? AND decoded_at IS NULL AND received_at >= ? AND received_at <= ?
-            """,
+            sql: undecodedInWindowSQL,
             arguments: [IngestInbox.Source.ble.rawValue, window.start, window.end]
         ) ?? 0 > 0
     }
@@ -133,7 +151,7 @@ enum BleNormalizer {
     private static func markOrphansDecoded(_ db: GRDB.Database, windows: [SessionWindow]) throws -> Int {
         let rows = try Row.fetchAll(
             db,
-            sql: "SELECT seq, received_at FROM ingest_inbox WHERE source = ? AND decoded_at IS NULL",
+            sql: undecodedSQL,
             arguments: [IngestInbox.Source.ble.rawValue]
         )
         var count = 0

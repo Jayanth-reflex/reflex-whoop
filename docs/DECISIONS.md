@@ -214,6 +214,26 @@ converting both ends, so Fahrenheit's 32° offset cancels.
 
 ## Band
 
+### The undecoded-inbox queries name their index
+
+The inbox grows by hundreds of thousands of band frames and only a handful are ever
+undecoded, which is what `idx_inbox_undecoded` is for. SQLite keeps no statistics
+here, so for `source = ? AND decoded_at IS NULL` it picks `idx_inbox_source_kind`
+instead — and `source = 'ble'` is nearly every row. `BleNormalizer.processPending`
+asks once per session, inside its write transaction: on the phone, 873k rows and 61
+sessions made that 5.4 s on a Mac and a sustained full core on the iPhone, until iOS
+killed the app for CPU use (`cpu_resource_fatal`, twice). With the index it is 4 ms.
+The write lock it held meant sync and recording writes were queued behind it too.
+
+`BleNormalizerTests.testUndecodedQueriesSeekTheUndecodedIndex` asserts the plan.
+Both queries say `INDEXED BY idx_inbox_undecoded` rather than nudging the planner:
+SQLite's own guidance is that `INDEXED BY` exists to make a plan change fail loudly,
+and a silent fallback to walking the table is the one outcome to rule out.
+
+`normalize` still reads a dirty session's rows by `received_at`, which has no index;
+it runs once per session with new frames, about 75 ms today. Indexing it needs a new
+migration.
+
 ### Recording from the band is one setting
 
 Keep recording is the only way to record. On, `AppContainer` holds one app-lifetime
