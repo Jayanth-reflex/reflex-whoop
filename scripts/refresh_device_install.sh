@@ -8,6 +8,12 @@
 # signed build of the same bundle ID with the same certificate is an upgrade
 # install: iOS keeps the container, so the archive comes through untouched.
 #
+# "Freshly signed" has to be checked, not assumed. Xcode reuses a cached profile
+# for as long as it is valid, so a rebuild on day five can carry a profile that
+# still dies on day seven. After building, the script reads the profile it
+# embedded; if that won't outlast the next refresh, it clears this app's cached
+# profiles — which makes Xcode mint a new one — and builds again.
+#
 # The archive is the one thing here that cannot be recreated, so the app's
 # Documents directory is copied off the phone before anything is installed over
 # it. Backups live outside the repository and are never committed.
@@ -34,6 +40,10 @@ readonly DERIVED_DATA="$HOME/Library/Caches/ReflexWhoop/DerivedData"
 readonly REFRESH_DAYS="${REFLEXWHOOP_REFRESH_DAYS:-5}"
 readonly KEEP_BACKUPS="${REFLEXWHOOP_KEEP_BACKUPS:-5}"
 readonly DB_FILE="reflexwhoop.sqlite"
+readonly PROFILE_DIR="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+readonly APP="$DERIVED_DATA/Build/Products/Debug-iphoneos/ReflexWhoop.app"
+# An install must stay valid past the next scheduled refresh, with a day to spare.
+readonly MIN_VALID_SECONDS=$(( (REFRESH_DAYS + 1) * 86400 ))
 
 device="${REFLEXWHOOP_DEVICE:-}"
 if_due=0
@@ -139,6 +149,54 @@ back_up_archive() {
   log "archive backed up to $destination ($(du -sh "$destination" | cut -f1))"
 }
 
+# -allowProvisioningUpdates is what lets Xcode fetch or mint a profile without the
+# IDE. Device registration is needed the first time only.
+build_app() {
+  xcodebuild build \
+    -project "$REPO/ReflexWhoop.xcodeproj" \
+    -scheme ReflexWhoop \
+    -configuration Debug \
+    -destination "generic/platform=iOS" \
+    -derivedDataPath "$DERIVED_DATA" \
+    -allowProvisioningUpdates \
+    -allowProvisioningDeviceRegistration \
+    -quiet \
+    || fail "build failed. Check that the Apple ID is still signed into Xcode → Settings → Accounts."
+  [ -d "$APP" ] || fail "built, but $APP is missing."
+}
+
+# Expiry of the profile embedded in the built app, as a Unix time. plistlib hands
+# back a naive datetime in UTC, so it is pinned to UTC before converting.
+profile_expiry() {
+  security cms -D -i "$APP/embedded.mobileprovision" 2>/dev/null | python3 -c '
+import plistlib, sys, datetime
+expiry = plistlib.loads(sys.stdin.buffer.read())["ExpirationDate"]
+print(int(expiry.replace(tzinfo=datetime.timezone.utc).timestamp()))' || echo 0
+}
+
+profile_outlasts_next_refresh() {
+  [ $(( $(profile_expiry) - $(date +%s) )) -ge "$MIN_VALID_SECONDS" ]
+}
+
+# Removes the cached profiles issued for this bundle ID and nothing else — wildcard
+# and other apps' profiles are left alone. They are a cache; Xcode issues a new one
+# on the next build.
+forget_cached_profiles() {
+  local bundle="$1" profile removed=0
+  [ -d "$PROFILE_DIR" ] || return 0
+  for profile in "$PROFILE_DIR"/*.mobileprovision; do
+    [ -f "$profile" ] || continue
+    if security cms -D -i "$profile" 2>/dev/null | python3 -c '
+import plistlib, sys
+identifier = plistlib.loads(sys.stdin.buffer.read())["Entitlements"]["application-identifier"]
+sys.exit(0 if identifier.split(".", 1)[1] == sys.argv[1] else 1)' "$bundle"; then
+      rm -f "$profile"
+      removed=$((removed + 1))
+    fi
+  done
+  log "cleared $removed cached profile(s) for $bundle"
+}
+
 prune_backups() {
   [ -d "$BACKUP_DIR" ] || return 0
   local stale
@@ -171,33 +229,26 @@ main() {
     back_up_archive "$device" "$bundle"
   fi
 
-  # -allowProvisioningUpdates is the whole point: it asks Apple for a fresh
-  # seven-day profile. Device registration is needed the first time only.
   log "building…"
-  xcodebuild build \
-    -project "$REPO/ReflexWhoop.xcodeproj" \
-    -scheme ReflexWhoop \
-    -configuration Debug \
-    -destination "generic/platform=iOS" \
-    -derivedDataPath "$DERIVED_DATA" \
-    -allowProvisioningUpdates \
-    -allowProvisioningDeviceRegistration \
-    -quiet \
-    || fail "build failed. Check that the Apple ID is still signed into Xcode → Settings → Accounts."
-
-  local app="$DERIVED_DATA/Build/Products/Debug-iphoneos/ReflexWhoop.app"
-  [ -d "$app" ] || fail "built, but $app is missing."
+  build_app
+  if ! profile_outlasts_next_refresh; then
+    log "Xcode reused a profile that expires $(date -r "$(profile_expiry)" '+%d %b %H:%M'); asking for a new one"
+    forget_cached_profiles "$bundle"
+    build_app
+    profile_outlasts_next_refresh \
+      || fail "Xcode did not issue a fresh profile; this build would lapse before the next refresh."
+  fi
 
   log "installing…"
   local problem
-  if ! problem="$(xcrun devicectl device install app --device "$device" "$app" --quiet 2>&1 >/dev/null)"; then
+  if ! problem="$(xcrun devicectl device install app --device "$device" "$APP" --quiet 2>&1 >/dev/null)"; then
     printf '%s\n' "$problem" | sed 's/^/    /'
     fail "install failed — see above. A locked phone is the usual cause."
   fi
 
   date +%s > "$STAMP_FILE"
   prune_backups
-  log "installed. Next refresh due in $REFRESH_DAYS days."
+  log "installed. This build runs until $(date -r "$(profile_expiry)" '+%d %b %H:%M'); next refresh due in $REFRESH_DAYS days."
 }
 
 main "$@"

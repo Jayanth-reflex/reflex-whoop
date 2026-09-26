@@ -46,6 +46,14 @@ window. Last-install time, backups and logs live under
 `~/Library/Application Support/ReflexWhoop` and `~/Library/Logs/ReflexWhoop`, outside
 the repository — the generated plist holds a local path, so it isn't committed either.
 
+A rebuild doesn't necessarily carry a new profile: Xcode reuses a cached one while it
+is valid, so a refresh on day five could install a build that still lapses on day
+seven. The script reads the profile it just embedded, and if that won't outlast the
+next refresh by a day it removes this app's cached profiles from
+`~/Library/Developer/Xcode/UserData/Provisioning Profiles` and builds again; Xcode
+then mints a new one. If it still doesn't, the run fails rather than installing a
+build that will lapse.
+
 The database is copied off the phone before each install. The upgrade-install
 guarantee is Apple's, not ours, and the archive is the one thing here that can't be
 rebuilt. Only the SQLite file, its write-ahead log and its shared-memory file: past
