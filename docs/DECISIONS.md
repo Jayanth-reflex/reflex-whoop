@@ -140,9 +140,10 @@ no `await` between them, so no caller can slip in and start a second request.
 `WhoopAuthRefreshTests` drives four concurrent refreshes through a stubbed session
 and asserts WHOOP is called once; before the change it was called four times.
 
-The failure was recoverable in practice, because the caller that won still wrote a
-good token pair. It wouldn't be if both landed: one of the two rotated tokens is then
-orphaned, and nothing valid remains to refresh with short of a full re-login.
+It is not recoverable. The next morning three syncs started in the same second —
+foreground, pull and manual — and none got a token back: two `400 invalid_request`,
+one `500 server_error`. The stored refresh token was spent and nothing had replaced
+it, so every sync for the next ten hours failed the same way until a re-login.
 
 ### Foreground sync checks `auth.isSignedIn()` directly
 
