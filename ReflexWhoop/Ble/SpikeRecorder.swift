@@ -48,6 +48,11 @@ final class SpikeRecorder {
     private var reassembler = FrameReassembler()
     private var sentSafeSequence = false
     private var lastWatermarkAt: Date?
+    /// Raw frames on their way to the inbox, a batch at a time — see `InboxWriteBuffer`.
+    private let inbox: InboxWriteBuffer
+    /// `inbox.failedFrameCount` when this session started, so each session records only
+    /// the frames it lost.
+    private var failedFramesAtSessionStart = 0
 
     /// How often the session row's "last seen" watermark is refreshed while
     /// recording. Every real session so far ended by the app being killed
@@ -58,6 +63,7 @@ final class SpikeRecorder {
 
     init(dbPool: DatabasePool) {
         self.dbPool = dbPool
+        inbox = InboxWriteBuffer(dbPool: dbPool)
         connection.onRawFrame = { [weak self] uuid, data, receivedAt in
             self?.handleRawFrame(characteristic: uuid, data: data, receivedAt: receivedAt)
         }
@@ -112,6 +118,7 @@ final class SpikeRecorder {
         lastR10Candidate = nil
         hrCrossCheckDiffBpm = nil
         lastWatermarkAt = nil
+        failedFramesAtSessionStart = inbox.failedFrameCount
         sentSafeSequence = false
         reassembler = FrameReassembler()
         connection.start(restoreState: restoreState)
@@ -122,15 +129,21 @@ final class SpikeRecorder {
         let frameCount = frameCount
         let byteCount = byteCount
         let dbPool = dbPool
+        let endedAt = Int64(Date().timeIntervalSince1970)
+        inbox.flush()
         Task {
+            // The session's last frames must be in the inbox before it closes, or the
+            // normalizer below would bound the window without them.
+            await inbox.drain()
+            let droppedCount = droppedFrameCount
             try? await dbPool.write { db in
                 try db.execute(
                     sql: """
                     UPDATE ble_sessions
-                    SET ended_at = ?, sample_count = ?, byte_count = ?, ended_reason = ?
+                    SET ended_at = ?, sample_count = ?, byte_count = ?, dropped_count = ?, ended_reason = ?
                     WHERE id = ?
                     """,
-                    arguments: [Int64(Date().timeIntervalSince1970), frameCount, byteCount, reason, id]
+                    arguments: [endedAt, frameCount, byteCount, droppedCount, reason, id]
                 )
             }
             // Normalize immediately so the session is queryable the moment it
@@ -199,15 +212,27 @@ final class SpikeRecorder {
 
         let frameCount = frameCount
         let byteCount = byteCount
+        let droppedCount = droppedFrameCount
         let dbPool = dbPool
         Task {
             try? await dbPool.write { db in
                 try db.execute(
-                    sql: "UPDATE ble_sessions SET ended_at = ?, sample_count = ?, byte_count = ? WHERE id = ?",
-                    arguments: [Int64(now.timeIntervalSince1970), frameCount, byteCount, id]
+                    sql: "UPDATE ble_sessions SET ended_at = ?, sample_count = ?, byte_count = ?, dropped_count = ? WHERE id = ?",
+                    arguments: [Int64(now.timeIntervalSince1970), frameCount, byteCount, droppedCount, id]
                 )
             }
         }
+    }
+
+    /// Frames this session lost because their batch couldn't be written.
+    private var droppedFrameCount: Int {
+        inbox.failedFrameCount - failedFramesAtSessionStart
+    }
+
+    /// Writes buffered frames now rather than waiting for the batch to fill — for the
+    /// app leaving the foreground, where iOS may suspend it before the next batch would.
+    func flushPendingFrames() {
+        inbox.flush()
     }
 
     private func handleRawFrame(characteristic: CBUUID, data: Data, receivedAt: Date) {
@@ -215,14 +240,10 @@ final class SpikeRecorder {
         byteCount += data.count
         persistWatermarkIfDue(now: receivedAt)
 
-        // Inbox-first: this write happens unconditionally, before any attempt
-        // to interpret the bytes. A wrong envelope hypothesis below loses no
-        // data — it only fails to light up the "confirmed" indicator.
-        Task {
-            try? await dbPool.write { db in
-                try IngestInbox.append(db, source: .ble, kind: characteristic.uuidString, payload: data, receivedAt: receivedAt)
-            }
-        }
+        // Inbox-first: every frame is queued for the inbox unconditionally, before
+        // any attempt to interpret the bytes. A wrong envelope hypothesis below loses
+        // no data — it only fails to light up the "confirmed" indicator.
+        inbox.append(kind: characteristic.uuidString, payload: data, receivedAt: receivedAt)
 
         // fd4b0007 is not Gen5Envelope-framed (docs/PROTOCOL-GEN5.md,
         // "`fd4b0007`: device metadata") — decode it

@@ -120,9 +120,9 @@ enum BleNormalizer {
     }
 
     // Both undecoded queries name their index. The inbox is hundreds of thousands of
-    // BLE rows with a handful undecoded, and SQLite, holding no statistics, answers
-    // `source = ?` from `idx_inbox_source_kind` instead — a walk of nearly the whole
-    // table. `hasUndecodedRows` runs once per session inside `processPending`'s write
+    // BLE rows with a handful undecoded, and SQLite, holding no statistics, once
+    // answered `source = ?` from a `(source, kind)` index instead — a walk of nearly the
+    // whole table. `hasUndecodedRows` runs once per session inside `processPending`'s write
     // transaction, so on the phone that held the write lock and a full core for ~50 s
     // until iOS killed the app for CPU use.
     //
@@ -131,12 +131,12 @@ enum BleNormalizer {
     // prepare and the tests say so, instead of the app quietly walking the table again.
 
     static let undecodedInWindowSQL = """
-        SELECT COUNT(*) FROM ingest_inbox INDEXED BY idx_inbox_undecoded
+        SELECT COUNT(*) FROM ingest_inbox INDEXED BY idx_inbox_pending
         WHERE source = ? AND decoded_at IS NULL AND received_at >= ? AND received_at <= ?
         """
 
     static let undecodedSQL = """
-        SELECT seq, received_at FROM ingest_inbox INDEXED BY idx_inbox_undecoded
+        SELECT seq, received_at FROM ingest_inbox INDEXED BY idx_inbox_pending
         WHERE source = ? AND decoded_at IS NULL
         """
 
@@ -167,15 +167,20 @@ enum BleNormalizer {
 
     // MARK: - Per-session normalization
 
+    /// Named for the same reason as the undecoded queries: without its index this is a
+    /// scan of the entire inbox, run inside the write transaction on every launch and
+    /// session end.
+    static let windowFramesSQL = """
+        SELECT seq, kind, received_at, payload, codec FROM ingest_inbox INDEXED BY idx_inbox_received
+        WHERE source = ? AND received_at >= ? AND received_at <= ?
+        ORDER BY seq ASC
+        """
+
     private static func normalize(_ db: GRDB.Database, window: SessionWindow) throws -> Stats {
         var stats = Stats()
         let rows = try Row.fetchAll(
             db,
-            sql: """
-            SELECT seq, kind, received_at, payload, codec FROM ingest_inbox
-            WHERE source = ? AND received_at >= ? AND received_at <= ?
-            ORDER BY seq ASC
-            """,
+            sql: windowFramesSQL,
             arguments: [IngestInbox.Source.ble.rawValue, window.start, window.end]
         )
         guard !rows.isEmpty else { return stats }

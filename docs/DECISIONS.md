@@ -67,6 +67,43 @@ grant and can't be prompted for one, so under `~/Desktop`, `~/Documents` or
 while the same script run from a terminal succeeds, because the terminal has a grant.
 `~/Developer` is fine.
 
+### Each band frame is exported once, and a new export replaces the old
+
+An export on the phone came to 1.55 GB, 1.4 GB of it band files, for 72 MB of band
+data. The exporter gave a session with no `ended_at` the window "from its start
+onward", and 18 of 61 sessions had been killed before they could close, so each of those
+re-dumped every frame recorded after it. It now partitions frames by
+`BleNormalizer.sessionWindows`, the definition the normalizer decodes by: a session with
+no end owns frames up to the next session's start. Frames in no window go to
+`unassigned.bin` rather than being dropped. The same data exports as about 115 MB, in
+one streamed pass over the inbox instead of a scan per session with each file built in
+memory.
+
+Exports also piled up: four copies filled 1.6 GB. The archive is append-only, so the
+newest export holds everything an older one did, and a finished export now removes the
+ones before it — only after it is complete, so a failed export never leaves no copy.
+The export sheet says so before the button is pressed.
+
+### The inbox indexes what is looked up, and frames are written in batches
+
+On the phone the database was 217 MB for 72 MB of band data. `idx_inbox_source_kind`
+(48 MB) indexed `'ble'` plus a UUID string for every frame and served no query that
+runs; `idx_inbox_undecoded` (13 MB) indexed every row when only the few undecoded are
+looked up. Migration v4 replaces them with a partial `idx_inbox_pending` (41 KB) and
+`idx_inbox_received` (11 MB), which gives a session's frames an access path instead of
+a scan of the whole, daily-growing inbox. No row changes; a test upgrades a populated
+v3 file and compares every row. The freed pages return to the phone at the first
+`compact()`, a full VACUUM run by `DatabaseMaintenance` on the charger — never on
+launch, where a multi-second rewrite would risk the watchdog.
+
+Each band frame used to be its own transaction, and iOS reported the app dirtying
+1,073 MB of flash in 6.4 hours. Measured on a copy of the phone's database, a commit
+per frame writes 19 KB to the WAL for an 83-byte frame; `InboxWriteBuffer` batches for
+up to 10 seconds, about 2 KB a frame. Past 10 s the savings flatten, and the window is
+what a hard kill can lose, so the buffer is also flushed on stop and on backgrounding.
+Batches chain, so frames keep arrival order, and a failed batch is counted into the
+session's `dropped_count` instead of vanishing behind `try?`.
+
 ### Storage in Documents, not Application Support
 
 `UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace` expose only

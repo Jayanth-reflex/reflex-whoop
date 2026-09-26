@@ -18,6 +18,8 @@ struct ApiSyncEngine {
 
     let client: WhoopClient
     let dbPool: DatabasePool
+    /// Shared by every engine the app makes, so overlapping syncs run once.
+    let runner: SyncRunner
 
     private let collectionResources: [(resource: String, kind: String, singleKind: String, fetchPage: (WhoopClient, String?, Date?, Date?) async throws -> Data)] = [
         ("cycle", ApiNormalizer.Kind.cyclePage, ApiNormalizer.Kind.cycleSingle, { client, token, start, end in try await client.cyclePage(nextToken: token, start: start, end: end) }),
@@ -30,8 +32,14 @@ struct ApiSyncEngine {
     /// for anything stale per `SyncPolicy`, re-fetch anything still pending a
     /// score, then drain the inbox. Call from app-foreground (debounced), a
     /// manual "Sync now", or the `BGAppRefreshTask` handler.
+    ///
+    /// A call made while another sync is running joins that one; see `SyncRunner`.
     @discardableResult
     func syncNow(trigger: String) async throws -> Summary {
+        try await runner.run { try await performSync(trigger: trigger) }
+    }
+
+    private func performSync(trigger: String) async throws -> Summary {
         var summary = Summary()
         let logID = try await beginSyncLog(trigger: trigger)
 

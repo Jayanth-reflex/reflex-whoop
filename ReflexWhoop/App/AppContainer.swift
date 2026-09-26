@@ -47,8 +47,11 @@ final class AppContainer {
     func syncEngine() async -> ApiSyncEngine? {
         guard (try? TokenStore.loadClientCredentials()) != nil else { return nil }
         let client = WhoopClient(auth: auth)
-        return ApiSyncEngine(client: client, dbPool: database.dbPool)
+        return ApiSyncEngine(client: client, dbPool: database.dbPool, runner: syncRunner)
     }
+
+    /// The one runner every sync goes through, whichever screen or task asks.
+    private let syncRunner = SyncRunner()
 
     private static let lastForegroundSyncKey = "lastForegroundSyncAttempt"
     private static let foregroundSyncDebounce: TimeInterval = 15 * 60
@@ -128,6 +131,12 @@ final class AppContainer {
     /// `CollectionSettings.continuousCollectionEnabled` is on and not at all
     /// otherwise. `nil` while it's off.
     @MainActor private(set) var continuousRecorder: SpikeRecorder?
+
+    /// Sends the recorder's buffered band frames to the inbox. Called as the app leaves
+    /// the foreground, where iOS may suspend it before the next batch would go out.
+    @MainActor func flushBandFrames() {
+        continuousRecorder?.flushPendingFrames()
+    }
 
     /// Why recording couldn't start the last time it was asked to.
     @MainActor private(set) var recordingStartError: String?

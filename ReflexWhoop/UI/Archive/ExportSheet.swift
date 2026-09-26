@@ -30,7 +30,7 @@ struct ExportSheet: View {
                             .foregroundStyle(.secondary)
                             .textCase(nil)
                     } footer: {
-                        SectionFooter(text: "At least \(databaseByteCount.formatted(.byteCount(style: .file))), since it includes a full copy of the database.")
+                        SectionFooter(text: "At least \(databaseByteCount.formatted(.byteCount(style: .file))), since it includes a full copy of the database. Replaces your previous copy, which this one already contains.")
                     }
                     .listRowBackground(Color.surface)
                 }

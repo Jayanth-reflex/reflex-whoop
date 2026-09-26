@@ -46,17 +46,21 @@ final class BleNormalizerTests: XCTestCase {
     /// runs the window check once per session inside its write transaction. On the
     /// phone — 873k rows, 61 sessions — that pegged a core for ~50 s and iOS killed
     /// the app for CPU use. Both undecoded queries must seek the undecoded index.
-    func testUndecodedQueriesSeekTheUndecodedIndex() throws {
-        let queries: [(sql: String, arguments: StatementArguments)] = [
-            (BleNormalizer.undecodedInWindowSQL, ["ble", 0, Int64.max]),
-            (BleNormalizer.undecodedSQL, ["ble"]),
+    func testInboxQueriesSeekTheirIndexes() throws {
+        let queries: [(sql: String, arguments: StatementArguments, index: String)] = [
+            (BleNormalizer.undecodedInWindowSQL, ["ble", 0, Int64.max], "idx_inbox_pending"),
+            (BleNormalizer.undecodedSQL, ["ble"], "idx_inbox_pending"),
+            (IngestInbox.undecodedSQL, ["api", 500], "idx_inbox_pending"),
+            // A session's frames, read on every launch and session end: without an
+            // index on time this is a scan of the whole inbox, growing every day.
+            (BleNormalizer.windowFramesSQL, ["ble", 0, Int64.max], "idx_inbox_received"),
         ]
         try database.dbPool.read { db in
             for query in queries {
                 let plan = try Row.fetchAll(db, sql: "EXPLAIN QUERY PLAN " + query.sql, arguments: query.arguments)
                     .map { $0["detail"] as String }
                     .joined(separator: " / ")
-                XCTAssertTrue(plan.contains("idx_inbox_undecoded"), "full inbox walk: \(plan)")
+                XCTAssertTrue(plan.contains(query.index), "expected \(query.index): \(plan)")
             }
         }
     }

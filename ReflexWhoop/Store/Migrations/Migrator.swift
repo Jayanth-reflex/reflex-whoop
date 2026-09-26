@@ -63,6 +63,20 @@ enum Migrator {
             }
         }
 
+        // Indexes only — no row is touched. The v1 inbox indexes cost 61 MB on a phone
+        // holding 72 MB of band data, and neither served the queries that run:
+        // `(source, kind)` indexed 'ble' plus a UUID string for every frame, and
+        // `(decoded_at)` indexed every row when only the few still undecoded are ever
+        // looked up. A partial index holds just those; `received_at` gives a session's
+        // frames an access path that doesn't scan the whole inbox, which grows daily.
+        // See docs/DECISIONS.md, "The inbox indexes what is looked up".
+        migrator.registerMigration("v4_inbox_indexes_for_lookups") { db in
+            try db.execute(sql: "DROP INDEX idx_inbox_source_kind")
+            try db.execute(sql: "DROP INDEX idx_inbox_undecoded")
+            try db.execute(sql: "CREATE INDEX idx_inbox_pending ON ingest_inbox(source, seq) WHERE decoded_at IS NULL")
+            try db.execute(sql: "CREATE INDEX idx_inbox_received ON ingest_inbox(received_at)")
+        }
+
         return migrator
     }
 
@@ -84,7 +98,7 @@ enum Migrator {
         }
     }
 
-    static let latestMigrationName = "v3_session_metrics_and_source_state"
+    static let latestMigrationName = "v4_inbox_indexes_for_lookups"
 
     // MARK: - Layer 1: Inbox (append-only, lossless, source-agnostic)
 

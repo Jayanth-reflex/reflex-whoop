@@ -8,6 +8,10 @@ import GRDB
 /// `manifest.json` tying it all together. This lands in `Documents/` (already
 /// exposed via `UIFileSharingEnabled`), so the in-app Export button's share
 /// sheet is the only other piece needed to get it onto a Mac.
+///
+/// A finished export replaces the ones before it. The archive only grows, so the
+/// newest copy holds everything an older one did; keeping them all is how four
+/// exports once filled 1.6 GB of a phone.
 enum Exporter {
     struct Result {
         let directory: URL
@@ -117,7 +121,20 @@ enum Exporter {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(manifest).write(to: directory.appendingPathComponent("manifest.json"))
 
+        try removeEarlierCopies(in: exportsRoot, keeping: directory)
         return Result(directory: directory, manifest: manifest)
+    }
+
+    /// Called only once the new copy is complete, so a failed export never leaves the
+    /// user with no copy at all.
+    private static func removeEarlierCopies(in exportsRoot: URL, keeping current: URL) throws {
+        let entries = try FileManager.default.contentsOfDirectory(
+            at: exportsRoot, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
+        )
+        for entry in entries where entry.lastPathComponent != current.lastPathComponent {
+            guard (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
+            try FileManager.default.removeItem(at: entry)
+        }
     }
 
     // MARK: - CSV
@@ -179,39 +196,61 @@ enum Exporter {
         return totalBytes
     }
 
-    /// Simple self-describing binary dump per BLE session, so it's replayable
-    /// without database access: `[u8 kindLen][kind ascii][i64 LE receivedAt]
-    /// [u32 LE payloadLen][payload bytes]`, repeated for every inbox row that
-    /// fell within the session's time window.
+    /// Band frames, one `BandRecordFile` per session, every frame in exactly one file.
+    ///
+    /// A session's frames are the ones in its `BleNormalizer.sessionWindows` window —
+    /// the definition the normalizer decodes by, so the export and the derived data
+    /// can't disagree about where a frame belongs. That matters most for a session the
+    /// app never closed: it has no `ended_at`, and treating that as "until the end of
+    /// time" once made every such session re-dump every later frame — 1.4 GB of files
+    /// for 72 MB of band data. Where a boundary second sits in two windows, the later
+    /// session takes it. Frames in no window go to `unassigned.bin`, so nothing that
+    /// reached the inbox is left out.
+    ///
+    /// One pass in `seq` order, streamed to disk. Querying per session would scan the
+    /// whole inbox each time — nothing indexes `received_at` — and building a file in
+    /// memory doesn't survive a long session on a phone.
     private static func writeBleSessionBins(_ db: GRDB.Database, to directory: URL) throws -> Int {
-        var totalBytes = 0
-        let sessions = try Row.fetchAll(db, sql: "SELECT id, started_at, ended_at FROM ble_sessions")
-        for session in sessions {
-            let id: String = session["id"]
-            let startedAt: Int64 = session["started_at"]
-            let endedAt: Int64 = (session["ended_at"] as Int64?) ?? Int64.max
+        let windows = try BleNormalizer.sessionWindows(db)
+        var files: [String: BandRecordFile] = [:]
+        for window in windows {
+            files[window.id] = try BandRecordFile(url: directory.appendingPathComponent("\(window.id).bin"))
+        }
 
-            var blob = Data()
-            let cursor = try Row.fetchCursor(
-                db,
-                sql: "SELECT kind, received_at, payload FROM ingest_inbox WHERE source = 'ble' AND received_at BETWEEN ? AND ? ORDER BY seq",
-                arguments: [startedAt, endedAt]
-            )
-            while let row = try cursor.next() {
-                let kind: String = row["kind"]
-                let receivedAt: Int64 = row["received_at"]
-                let payload: Data = row["payload"]
-                let kindBytes = Data(kind.utf8)
-                blob.append(UInt8(kindBytes.count))
-                blob.append(kindBytes)
-                withUnsafeBytes(of: receivedAt.littleEndian) { blob.append(contentsOf: $0) }
-                withUnsafeBytes(of: UInt32(payload.count).littleEndian) { blob.append(contentsOf: $0) }
-                blob.append(payload)
+        let cursor = try Row.fetchCursor(
+            db,
+            sql: "SELECT kind, received_at, payload, codec FROM ingest_inbox WHERE source = 'ble' ORDER BY seq"
+        )
+        while let row = try cursor.next() {
+            let receivedAt: Int64 = row["received_at"]
+            let name = owner(of: receivedAt, in: windows) ?? unassignedFileName
+            if files[name] == nil {
+                files[name] = try BandRecordFile(url: directory.appendingPathComponent("\(name).bin"))
             }
-            let fileURL = directory.appendingPathComponent("\(id).bin")
-            try blob.write(to: fileURL)
-            totalBytes += blob.count
+            try files[name]?.append(kind: row["kind"], receivedAt: receivedAt, payload: IngestInbox.payload(for: row))
+        }
+
+        var totalBytes = 0
+        for file in files.values {
+            try file.close()
+            totalBytes += file.byteCount
         }
         return totalBytes
+    }
+
+    static let unassignedFileName = "unassigned"
+
+    /// The latest-starting window that contains `timestamp`. Sessions never overlap —
+    /// one band connection at a time — so only that candidate needs checking.
+    /// `windows` must be sorted by start, as `sessionWindows` returns them.
+    static func owner(of timestamp: Int64, in windows: [BleNormalizer.SessionWindow]) -> String? {
+        var low = 0, high = windows.count
+        while low < high {
+            let mid = (low + high) / 2
+            if windows[mid].start <= timestamp { low = mid + 1 } else { high = mid }
+        }
+        guard low > 0 else { return nil }
+        let candidate = windows[low - 1]
+        return timestamp <= candidate.end ? candidate.id : nil
     }
 }

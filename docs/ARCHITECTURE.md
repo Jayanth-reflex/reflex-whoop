@@ -97,7 +97,8 @@ failures, via `sync_log.error_kind`.
 `SyncPolicy` gives each resource a staleness budget (workouts 30 min, sleep and
 recovery 1 h, cycles 4 h, profile and body 24 h), so opening the app fetches only
 what is stale. Sync runs on foreground, on demand, and from a `BGAppRefreshTask`
-(`com.reflexwhoop.sync.refresh`).
+(`com.reflexwhoop.sync.refresh`). Every trigger goes through one `SyncRunner`: a sync
+asked for while another runs joins it.
 
 `SourceStatus` turns the sync log into a `SourceState`: `active`, `notConfigured`,
 `unauthorized`, `inactive` or `unreachable`. When WHOOP can no longer contribute,
@@ -108,7 +109,8 @@ every screen keeps working from the archive and says what state the source is in
 `BandConnection` connects to the WHOOP 5.0 band's custom `fd4b…` GATT service using
 the bond the official WHOOP app already holds; no re-pairing. Every outgoing command
 passes through `OpcodeAllowlist`, which only admits live-stream and read-only opcodes.
-Inbound frames are appended to the inbox as they arrive. The protocol, what is
+Inbound frames reach the inbox through `InboxWriteBuffer`, in arrival order, one
+transaction per 10 seconds rather than per frame. The protocol, what is
 decoded, and the rails are in [`PROTOCOL-GEN5.md`](PROTOCOL-GEN5.md).
 
 **Keep recording** (`CollectionSettings`, off by default) is the only way to record.
@@ -127,7 +129,9 @@ replays every session from the inbox after a decoder change.
 ## Storage
 
 SQLite through GRDB (`DatabasePool`, WAL) at `Documents/reflexwhoop.sqlite`, with
-`synchronous=NORMAL`, `mmap_size=256MB` and `auto_vacuum=INCREMENTAL`. Documents is
+`synchronous=NORMAL` and `mmap_size=256MB`. `DatabaseMaintenance` compacts the file in
+a `BGProcessingTask` while the phone charges; its first run switches an existing file
+to `auto_vacuum=INCREMENTAL`, which only a full VACUUM can do. Documents is
 exposed in Files and Finder (`UIFileSharingEnabled`), which is also the export path.
 
 | Layer | Tables | Notes |
@@ -215,11 +219,15 @@ Screens and components are described in [`DESIGN-SYSTEM.md`](DESIGN-SYSTEM.md).
 
 - a CSV per normalized and derived table;
 - `reflexwhoop.sqlite`, a `VACUUM INTO` snapshot, safe to take from a live WAL database;
-- `raw_api.jsonl` and `ble_sessions/<id>.bin`, the untouched payloads;
+- `raw_api.jsonl` and `ble_sessions/<id>.bin`, the untouched payloads. Each band frame
+  is in exactly one file: the session whose normalizer window holds it, or
+  `unassigned.bin` if none does;
 - `manifest.json`: export time, applied migrations, algorithm versions, row and byte
   counts, date ranges.
 
-A share sheet sends it anywhere; the folder is also visible in Files and Finder.
+A finished export replaces the previous one; the archive only grows, so the new copy
+holds everything the old one did. A share sheet sends it anywhere; the folder is also
+visible in Files and Finder.
 [`mcp-server/`](../mcp-server/README.md) opens that snapshot read-only on a Mac so
 Claude can query it, and converts CSVs to Parquet.
 

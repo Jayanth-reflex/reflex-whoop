@@ -40,8 +40,13 @@ struct RootView: View {
             await container.syncIfDueOnForeground()
         }
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active {
+            switch newPhase {
+            case .active:
                 Task { await container.syncIfDueOnForeground() }
+            case .background:
+                container.flushBandFrames()
+            default:
+                break
             }
         }
     }

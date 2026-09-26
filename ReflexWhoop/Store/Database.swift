@@ -29,6 +29,8 @@ final class Database: Sendable {
         }
 
         dbPool = try DatabasePool(path: path, configuration: config)
+        // Effective only on a brand-new, empty file: before tables exist. An existing
+        // file keeps its mode until `compact()` runs a full VACUUM.
         try dbPool.write { db in
             try db.execute(sql: "PRAGMA auto_vacuum = INCREMENTAL")
         }
@@ -58,10 +60,30 @@ final class Database: Sendable {
     /// Periodic maintenance — call from a background task, not on every launch.
     /// Incremental vacuum matters here because BLE chunk blobs churn: sessions get
     /// re-encoded, old chunks deleted, and without periodic reclaiming the file only grows.
-    func runMaintenance() async throws {
-        try await dbPool.write { db in
-            try db.execute(sql: "PRAGMA incremental_vacuum")
-            try db.execute(sql: "ANALYZE")
+    /// Returns the file's free pages to the phone.
+    ///
+    /// SQLite applies `auto_vacuum` to an existing database only during a full VACUUM,
+    /// so setting it on open (above) takes effect on a new install and nowhere else — the
+    /// phone's file reported `auto_vacuum = 0` and could only ever grow. The first call
+    /// here does that one full VACUUM; after it, reclaiming is incremental and cheap.
+    ///
+    /// The full VACUUM rewrites the whole file and blocks every reader and writer while
+    /// it runs, so it belongs in `DatabaseMaintenance`'s background task, not on launch.
+    /// In WAL mode it also writes the whole file through the log, which is truncated
+    /// afterwards rather than left at the size of the database.
+    func compact() async throws {
+        let mode = try await dbPool.read { try Int.fetchOne($0, sql: "PRAGMA auto_vacuum") }
+        try await dbPool.barrierWriteWithoutTransaction { db in
+            if mode != Self.incrementalAutoVacuum {
+                try db.execute(sql: "PRAGMA auto_vacuum = INCREMENTAL")
+                try db.execute(sql: "VACUUM")
+            } else {
+                try db.execute(sql: "PRAGMA incremental_vacuum")
+            }
+            try db.execute(sql: "PRAGMA wal_checkpoint(TRUNCATE)")
         }
     }
+
+    /// `PRAGMA auto_vacuum`'s value for INCREMENTAL.
+    private static let incrementalAutoVacuum = 2
 }

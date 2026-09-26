@@ -48,11 +48,13 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
+		<string>processing</string>
 		<string>bluetooth-central</string>
 	</array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.reflexwhoop.sync.refresh</string>
+		<string>com.reflexwhoop.maintenance</string>
 	</array>
 
 	<!-- CoreBluetooth (Phase 4) — direct connection to your own WHOOP band over

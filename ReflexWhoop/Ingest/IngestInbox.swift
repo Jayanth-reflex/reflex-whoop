@@ -55,18 +55,18 @@ enum IngestInbox {
         return ChunkCompression.decompress(payload, using: codec, expectedSize: 1 << 20)
     }
 
+    /// Named index for the reason `BleNormalizer` gives: without it SQLite may walk the
+    /// whole inbox to find the few rows still waiting.
+    static let undecodedSQL = """
+        SELECT * FROM ingest_inbox INDEXED BY idx_inbox_pending
+        WHERE source = ? AND decoded_at IS NULL
+        ORDER BY seq ASC
+        LIMIT ?
+        """
+
     /// Rows the normalizer hasn't processed yet, oldest first.
     static func fetchUndecoded(_ db: GRDB.Database, source: Source, limit: Int = 500) throws -> [Row] {
-        try Row.fetchAll(
-            db,
-            sql: """
-            SELECT * FROM ingest_inbox
-            WHERE source = ? AND decoded_at IS NULL
-            ORDER BY seq ASC
-            LIMIT ?
-            """,
-            arguments: [source.rawValue, limit]
-        )
+        try Row.fetchAll(db, sql: undecodedSQL, arguments: [source.rawValue, limit])
     }
 
     static func markDecoded(_ db: GRDB.Database, seq: Int64, decoderVersion: Int, at date: Date = Date()) throws {
