@@ -44,7 +44,7 @@ struct PatternsView: View {
 
     private func load() async {
         do {
-            let rows = try await container.database.dbPool.read(AnalysisQueries.correlations)
+            let rows = try await container.database.dbPool.read { try AnalysisQueries.correlations($0) }
             summary = PatternsSummary(rows: rows)
             loadError = nil
         } catch {

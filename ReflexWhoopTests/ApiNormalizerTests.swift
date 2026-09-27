@@ -10,7 +10,7 @@ final class ApiNormalizerTests: XCTestCase {
         let db = try TestSupport.makeDatabase()
         let payload = try TestSupport.loadFixture("cycle_page")
 
-        try db.dbPool.write { conn in
+        _ = try db.dbPool.write { conn in
             try IngestInbox.append(conn, source: .api, kind: ApiNormalizer.Kind.cyclePage, payload: payload)
         }
 
@@ -40,7 +40,7 @@ final class ApiNormalizerTests: XCTestCase {
     func testRecoveryPageDecodesCorrectly() throws {
         let db = try TestSupport.makeDatabase()
         let payload = try TestSupport.loadFixture("recovery_page")
-        try db.dbPool.write { conn in
+        _ = try db.dbPool.write { conn in
             try IngestInbox.append(conn, source: .api, kind: ApiNormalizer.Kind.recoveryPage, payload: payload)
         }
         _ = try ApiNormalizer.processPending(db.dbPool)
@@ -55,7 +55,7 @@ final class ApiNormalizerTests: XCTestCase {
         let db = try TestSupport.makeDatabase()
         let bodyPayload = try TestSupport.loadFixture("body_measurement")
 
-        try db.dbPool.write { conn in
+        _ = try db.dbPool.write { conn in
             try IngestInbox.append(conn, source: .api, kind: ApiNormalizer.Kind.bodyMeasurement, payload: bodyPayload)
         }
 
@@ -69,7 +69,7 @@ final class ApiNormalizerTests: XCTestCase {
 
         // Profile now lands (as it would first, in a real sync ordering).
         let profilePayload = try TestSupport.loadFixture("profile")
-        try db.dbPool.write { conn in
+        _ = try db.dbPool.write { conn in
             try IngestInbox.append(conn, source: .api, kind: ApiNormalizer.Kind.profile, payload: profilePayload)
         }
         let secondPass = try ApiNormalizer.processPending(db.dbPool)

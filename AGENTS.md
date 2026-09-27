@@ -155,8 +155,7 @@ them; none may be relaxed to make a change easier.
 ## Workflow
 
 - **Tests first for logic.** Write the failing XCTest, then the code. All tests must
-  pass before a commit; existing warnings in `ApiNormalizerTests` and
-  `BleNormalizerTests` predate current work.
+  pass before a commit, and the build stays free of warnings.
 - **Verify UI in the Simulator.** Run the app, look at every screen the change
   touches, and check it at a large Dynamic Type size. A UI change isn't done because it
   compiles.

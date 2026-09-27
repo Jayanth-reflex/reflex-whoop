@@ -61,6 +61,6 @@ struct FirstSyncStep: View {
         } catch {
             errorText = "The sync stopped: \(error.localizedDescription). It'll try again next time you open the app."
         }
-        history = try? await container.database.dbPool.read(WhoopHistory.load)
+        history = try? await container.database.dbPool.read { try WhoopHistory.load($0) }
     }
 }

@@ -32,7 +32,7 @@ final class BleNormalizerTests: XCTestCase {
     }
 
     private func appendFrame(_ payload: Data, at receivedAt: Int64, kind: String = "fd4b0005") throws {
-        try database.dbPool.write { db in
+        _ = try database.dbPool.write { db in
             try IngestInbox.append(
                 db, source: .ble, kind: kind, payload: payload,
                 receivedAt: Date(timeIntervalSince1970: TimeInterval(receivedAt))

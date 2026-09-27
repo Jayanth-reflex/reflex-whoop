@@ -280,11 +280,16 @@ private final class AuthSessionRunner: NSObject, ASWebAuthenticationPresentation
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         #if canImport(UIKit)
-        let anchor = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap { $0.windows }
-            .first { $0.isKeyWindow }
-        return anchor ?? ASPresentationAnchor()
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        if let keyWindow = scenes.flatMap(\.windows).first(where: \.isKeyWindow) {
+            return keyWindow
+        }
+        // Sign-in starts from a button, so a scene is always there to present from;
+        // iOS 26 removed the scene-less anchor this used to fall back to.
+        guard let scene = scenes.first else {
+            preconditionFailure("WHOOP sign-in needs a window scene to present from")
+        }
+        return ASPresentationAnchor(windowScene: scene)
         #else
         return ASPresentationAnchor()
         #endif

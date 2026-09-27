@@ -99,7 +99,7 @@ struct ApiSyncEngine {
             requests += 1
 
             let nextToken = try Self.peekNextToken(page)
-            try await dbPool.write { db in
+            _ = try await dbPool.write { db in
                 try IngestInbox.append(db, source: .api, kind: entry.kind, payload: page)
                 try setCursor(db, resource: entry.resource, cursor: nextToken, backfillComplete: nextToken == nil)
             }
@@ -123,7 +123,7 @@ struct ApiSyncEngine {
             let page = try await entry.fetchPage(client, cursor, start, nil)
             requests += 1
 
-            try await dbPool.write { db in
+            _ = try await dbPool.write { db in
                 try IngestInbox.append(db, source: .api, kind: entry.kind, payload: page)
             }
 
@@ -140,7 +140,7 @@ struct ApiSyncEngine {
     private func syncSingleObject(resource: String, kind: String, fetch: () async throws -> Data) async throws -> Int {
         guard SyncPolicy.isStale(resource: resource, lastSyncedAt: try await lastSyncedAt(resource)) else { return 0 }
         let payload = try await fetch()
-        try await dbPool.write { db in
+        _ = try await dbPool.write { db in
             try IngestInbox.append(db, source: .api, kind: kind, payload: payload)
         }
         try await touchLastSyncedAt(resource)
@@ -179,7 +179,7 @@ struct ApiSyncEngine {
             }
             requests += 1
 
-            try await dbPool.write { db in
+            _ = try await dbPool.write { db in
                 try IngestInbox.append(db, source: .api, kind: kind, payload: payload)
                 try db.execute(
                     sql: "UPDATE pending_scores SET attempts = attempts + 1 WHERE resource = ? AND record_id = ?",

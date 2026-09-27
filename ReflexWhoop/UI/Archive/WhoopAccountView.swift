@@ -74,7 +74,7 @@ struct WhoopAccountView: View {
 
     private func load() async {
         sources = await container.sourceSnapshot()
-        history = try? await container.database.dbPool.read(WhoopHistory.load)
+        history = try? await container.database.dbPool.read { try WhoopHistory.load($0) }
     }
 
     private func reload() {
