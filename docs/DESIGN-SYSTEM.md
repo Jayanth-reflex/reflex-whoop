@@ -56,8 +56,8 @@ footers, labeled values and empty-state descriptions by default. `SectionFooter`
 | `HeartRateChart`, `MetricHistoryChart` | Swift Charts on real time; lines break where readings stop (`GappedLineMarks`) and the normal band sits behind (`NormalBandMarks`) |
 | `Sparkline` | the range chosen on Trends, the normal band, the last point emphasised |
 | `MetricValueText`, `HeroValue` | a formatted value with its unit set smaller; a missing value is a dash read as "No reading" |
-| `PrimaryButtonStyle` | champagne capsule, `onChampagne` label, at least 52 pt tall |
-| `SectionHeader`, `SectionFooter`, `StatusLabel`, `InlineMessage` | headers, footers, a dot plus a word, inline errors |
+| `PrimaryButtonStyle` | champagne capsule, `onChampagne` label, at least 52 pt tall. Pinned under scrolling content with `safeAreaBar`, not `safeAreaInset`, so the content fades out beneath it instead of running into its text |
+| `SectionHeader`, `SectionFooter`, `StatusLabel`, `InlineMessage` | headers, footers, a dot plus a word (the dot stays on the first line when the word wraps), inline errors |
 
 Charts carry VoiceOver descriptions (`MetricHistoryChartDescriptor`); range strips
 read the value, the range and the status.

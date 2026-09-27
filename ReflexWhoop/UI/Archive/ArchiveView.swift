@@ -63,7 +63,7 @@ struct ArchiveView: View {
                         } header: {
                             SectionHeader(title: "Your data")
                         } footer: {
-                            SectionFooter(text: "The app never deletes anything. Deleting the app does, so keep an exported copy somewhere safe.")
+                            SectionFooter(text: "The app never deletes your history. Deleting the app does, and its exports with it, so keep a copy off this iPhone.")
                         }
 
                         Section {

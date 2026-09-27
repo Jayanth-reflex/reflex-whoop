@@ -7,10 +7,15 @@ struct ArchiveTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
+            // Each tile gets an equal third of the row, which is narrower than a value
+            // like "251.8 MB" at this size; shrinking a little beats breaking "MB" onto
+            // its own line. When the row can't fit at all, `StatRow` stacks the tiles.
             Text(value)
                 .font(.title3)
                 .bold()
                 .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
             Text(caption)
                 .font(.footnote)
                 .foregroundStyle(.secondary)

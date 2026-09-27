@@ -30,17 +30,25 @@ struct ExportSheet: View {
                             .foregroundStyle(.secondary)
                             .textCase(nil)
                     } footer: {
-                        SectionFooter(text: "At least \(databaseByteCount.formatted(.byteCount(style: .file))), since it includes a full copy of the database. Replaces your previous copy, which this one already contains.")
+                        SectionFooter(text: "At least \(databaseByteCount.formatted(.byteCount(style: .file))), since it includes a full copy of the database.")
                     }
                     .listRowBackground(Color.surface)
                 }
             }
-            .safeAreaInset(edge: .bottom) {
+            .safeAreaBar(edge: .bottom) {
                 if result == nil {
                     VStack(spacing: 8) {
                         if let errorText {
                             InlineMessage(text: errorText)
                         }
+                        // Beside the button rather than in the list footer, where the
+                        // half-height sheet hid it: this has to be read before tapping.
+                        // `safeAreaBar`, not `safeAreaInset`, so the list scrolling
+                        // underneath fades out instead of running into this text.
+                        Text("Replaces your previous copy, which this one already contains.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
                         Button(action: startExport) {
                             if isExporting {
                                 ProgressView()

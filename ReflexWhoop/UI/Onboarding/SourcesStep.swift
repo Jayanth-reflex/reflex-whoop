@@ -35,7 +35,7 @@ struct SourcesStep: View {
             }
             .padding()
         }
-        .safeAreaInset(edge: .bottom) {
+        .safeAreaBar(edge: .bottom) {
             OnboardingActions(primaryTitle: "Continue", primary: next, isPrimaryEnabled: wantsWhoop || wantsBand)
         }
     }

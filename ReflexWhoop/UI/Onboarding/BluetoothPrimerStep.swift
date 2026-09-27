@@ -36,7 +36,7 @@ struct BluetoothPrimerStep: View {
             .padding()
             .padding(.top, 24)
         }
-        .safeAreaInset(edge: .bottom) {
+        .safeAreaBar(edge: .bottom) {
             OnboardingActions(primaryTitle: "Continue", primary: allow, secondaryTitle: "Not now", secondary: notNow)
         }
     }

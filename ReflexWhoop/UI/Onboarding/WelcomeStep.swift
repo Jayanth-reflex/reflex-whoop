@@ -46,7 +46,7 @@ struct WelcomeStep: View {
             .padding(.horizontal, 32)
             .padding(.top, 40)
         }
-        .safeAreaInset(edge: .bottom) {
+        .safeAreaBar(edge: .bottom) {
             OnboardingActions(primaryTitle: "Get started", primary: getStarted)
         }
     }

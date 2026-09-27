@@ -43,7 +43,7 @@ struct FirstSyncStep: View {
             .listRowBackground(Color.surface)
         }
         .navigationBarBackButtonHidden()
-        .safeAreaInset(edge: .bottom) {
+        .safeAreaBar(edge: .bottom) {
             OnboardingActions(primaryTitle: "Go to Today", primary: finish)
         }
         .task { await sync() }
