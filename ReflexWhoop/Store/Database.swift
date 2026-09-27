@@ -82,6 +82,13 @@ final class Database: Sendable {
             }
             try db.execute(sql: "PRAGMA wal_checkpoint(TRUNCATE)")
         }
+        // It runs unattended in a background task; this row is how anyone can tell it did.
+        try await dbPool.write { db in
+            try db.execute(
+                sql: "INSERT INTO schema_meta (key, value) VALUES ('compacted_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                arguments: [String(Int64(Date().timeIntervalSince1970))]
+            )
+        }
     }
 
     /// `PRAGMA auto_vacuum`'s value for INCREMENTAL.

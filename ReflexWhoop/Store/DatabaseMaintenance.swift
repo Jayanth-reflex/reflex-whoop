@@ -1,5 +1,6 @@
 import Foundation
 import BackgroundTasks
+import os
 
 /// Runs `Database.compact()` in a `BGProcessingTask` that waits for the phone to be on
 /// power. The first compaction is a full VACUUM: it rewrites the whole file and blocks
@@ -22,12 +23,22 @@ enum DatabaseMaintenance {
     /// Keeps one run pending. No earliest date: submitting replaces the pending request,
     /// so a date would slide forward on every launch and never arrive for someone who
     /// opens the app daily. iOS picks the moment once the phone is charging.
+    ///
+    /// A refused request is logged rather than dropped: the Simulator has no background
+    /// task daemon and refuses every one, and a silent failure there looks exactly like
+    /// success.
     static func schedule() {
         let request = BGProcessingTaskRequest(identifier: taskIdentifier)
         request.requiresExternalPower = true
         request.requiresNetworkConnectivity = false
-        try? BGTaskScheduler.shared.submit(request)
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            log.error("Couldn't schedule database maintenance: \(error.localizedDescription, privacy: .public)")
+        }
     }
+
+    private static let log = Logger(subsystem: "com.reflexwhoop.app", category: "maintenance")
 
     private static func handle(_ task: BGProcessingTask, database: Database) {
         schedule()

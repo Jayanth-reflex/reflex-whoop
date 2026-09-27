@@ -98,6 +98,10 @@ final class DatabaseTests: XCTestCase {
         XCTAssertEqual(freeAfter, 0)
         let walBytes = (try? FileManager.default.attributesOfItem(atPath: path + "-wal")[.size] as? NSNumber)?.intValue ?? 0
         XCTAssertLessThan(walBytes, 64 * 1024, "VACUUM writes the whole file through the WAL; it must be truncated after")
+
+        // It runs unattended in a background task, so it has to leave proof that it did.
+        let compactedAt = try await db.dbPool.read { try String.fetchOne($0, sql: "SELECT value FROM schema_meta WHERE key = 'compacted_at'") }
+        XCTAssertNotNil(compactedAt)
     }
 
     func testOnDiskByteCountCoversTheStore() throws {

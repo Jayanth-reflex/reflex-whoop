@@ -1,5 +1,6 @@
 import Foundation
 import BackgroundTasks
+import os
 
 /// Registers and drives the `BGAppRefreshTask` that lets sync run when the app
 /// isn't foregrounded. iOS decides if/when this actually fires — typically every
@@ -23,8 +24,14 @@ enum BackgroundSync {
     static func scheduleNext() {
         let request = BGAppRefreshTaskRequest(identifier: taskIdentifier)
         request.earliestBeginDate = Date().addingTimeInterval(4 * 60 * 60) // no earlier than 4h out
-        try? BGTaskScheduler.shared.submit(request)
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            log.error("Couldn't schedule background sync: \(error.localizedDescription, privacy: .public)")
+        }
     }
+
+    private static let log = Logger(subsystem: "com.reflexwhoop.app", category: "sync")
 
     private static func handle(_ task: BGAppRefreshTask, container: AppContainer) {
         scheduleNext() // always queue the next one, whether or not this one succeeds
